@@ -1,3 +1,5 @@
+import 'package:manage_state/core/network/api_client.dart';
+
 import 'package:manage_state/data/marketplace/models/marketplace_item_model.dart';
 
 abstract class MarketplaceRemoteDataSource {
@@ -5,6 +7,10 @@ abstract class MarketplaceRemoteDataSource {
 }
 
 class MarketplaceRemoteDataSourceImpl implements MarketplaceRemoteDataSource {
+  final ApiClient apiClient;
+
+  MarketplaceRemoteDataSourceImpl(this.apiClient);
+
   @override
   Future<List<MarketplaceItemModel>> getItems() async {
     // Simulate API call

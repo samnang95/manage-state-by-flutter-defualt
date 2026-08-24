@@ -1,3 +1,5 @@
+import 'package:manage_state/core/network/api_client.dart';
+
 import 'package:manage_state/data/friends/models/friend_request_model.dart';
 
 abstract class FriendsRemoteDataSource {
@@ -5,6 +7,10 @@ abstract class FriendsRemoteDataSource {
 }
 
 class FriendsRemoteDataSourceImpl implements FriendsRemoteDataSource {
+  final ApiClient apiClient;
+
+  FriendsRemoteDataSourceImpl(this.apiClient);
+
   @override
   Future<List<FriendRequestModel>> getFriendRequests() async {
     // Simulate API call

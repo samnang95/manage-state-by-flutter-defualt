@@ -41,6 +41,8 @@ import 'package:manage_state/domain/profile/repositories/profile_repository.dart
 import 'package:manage_state/domain/profile/usecases/get_user_profile_usecase.dart';
 import 'package:manage_state/presentation/profile/controllers/profile_controller.dart';
 
+import 'package:manage_state/core/network/api_client.dart';
+
 class DependencyInjector {
   // Singleton instance
   static final DependencyInjector _instance = DependencyInjector._internal();
@@ -48,10 +50,13 @@ class DependencyInjector {
 
   DependencyInjector._internal();
 
+  // 1. Core Native ApiClient
+  late final ApiClient apiClient = ApiClient(baseUrl: 'https://api.example.com');
+
   // ==========================================
   // Home Feature
   // ==========================================
-  late final HomeRemoteDataSource _homeDataSource = HomeRemoteDataSourceImpl();
+  late final HomeRemoteDataSource _homeDataSource = HomeRemoteDataSourceImpl(apiClient);
   late final HomeRepository _homeRepository = HomeRepositoryImpl(_homeDataSource);
   late final GetStoriesUseCase _getStoriesUseCase = GetStoriesUseCase(_homeRepository);
   late final GetPostsUseCase _getPostsUseCase = GetPostsUseCase(_homeRepository);
@@ -61,7 +66,7 @@ class DependencyInjector {
   // ==========================================
   // Friends Feature
   // ==========================================
-  late final FriendsRemoteDataSource _friendsDataSource = FriendsRemoteDataSourceImpl();
+  late final FriendsRemoteDataSource _friendsDataSource = FriendsRemoteDataSourceImpl(apiClient);
   late final FriendsRepository _friendsRepository = FriendsRepositoryImpl(_friendsDataSource);
   late final GetFriendRequestsUseCase _getFriendRequestsUseCase = GetFriendRequestsUseCase(_friendsRepository);
 
@@ -70,7 +75,7 @@ class DependencyInjector {
   // ==========================================
   // Marketplace Feature
   // ==========================================
-  late final MarketplaceRemoteDataSource _marketplaceDataSource = MarketplaceRemoteDataSourceImpl();
+  late final MarketplaceRemoteDataSource _marketplaceDataSource = MarketplaceRemoteDataSourceImpl(apiClient);
   late final MarketplaceRepository _marketplaceRepository = MarketplaceRepositoryImpl(_marketplaceDataSource);
   late final GetMarketplaceItemsUseCase _getMarketplaceItemsUseCase = GetMarketplaceItemsUseCase(_marketplaceRepository);
 
@@ -79,7 +84,7 @@ class DependencyInjector {
   // ==========================================
   // Notifications Feature
   // ==========================================
-  late final NotificationsRemoteDataSource _notificationsDataSource = NotificationsRemoteDataSourceImpl();
+  late final NotificationsRemoteDataSource _notificationsDataSource = NotificationsRemoteDataSourceImpl(apiClient);
   late final NotificationsRepository _notificationsRepository = NotificationsRepositoryImpl(_notificationsDataSource);
   late final GetNotificationsUseCase _getNotificationsUseCase = GetNotificationsUseCase(_notificationsRepository);
 
@@ -88,7 +93,7 @@ class DependencyInjector {
   // ==========================================
   // Reels Feature
   // ==========================================
-  late final ReelsRemoteDataSource _reelsDataSource = ReelsRemoteDataSourceImpl();
+  late final ReelsRemoteDataSource _reelsDataSource = ReelsRemoteDataSourceImpl(apiClient);
   late final ReelsRepository _reelsRepository = ReelsRepositoryImpl(_reelsDataSource);
   late final GetReelsUseCase _getReelsUseCase = GetReelsUseCase(_reelsRepository);
 
@@ -97,7 +102,7 @@ class DependencyInjector {
   // ==========================================
   // Profile Feature
   // ==========================================
-  late final ProfileRemoteDataSource _profileDataSource = ProfileRemoteDataSourceImpl();
+  late final ProfileRemoteDataSource _profileDataSource = ProfileRemoteDataSourceImpl(apiClient);
   late final ProfileRepository _profileRepository = ProfileRepositoryImpl(_profileDataSource);
   late final GetUserProfileUseCase _getUserProfileUseCase = GetUserProfileUseCase(_profileRepository);
 

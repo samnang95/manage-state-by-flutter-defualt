@@ -1,3 +1,4 @@
+import 'package:manage_state/core/network/api_client.dart';
 import 'package:manage_state/data/home/models/story_model.dart';
 import 'package:manage_state/data/home/models/post_model.dart';
 
@@ -7,6 +8,9 @@ abstract class HomeRemoteDataSource {
 }
 
 class HomeRemoteDataSourceImpl implements HomeRemoteDataSource {
+  final ApiClient apiClient;
+
+  HomeRemoteDataSourceImpl(this.apiClient);
   @override
   Future<List<StoryModel>> getStories() async {
     // Simulate API call
