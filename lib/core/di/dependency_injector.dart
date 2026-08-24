@@ -42,6 +42,7 @@ import 'package:manage_state/domain/profile/usecases/get_user_profile_usecase.da
 import 'package:manage_state/presentation/profile/controllers/profile_controller.dart';
 
 import 'package:manage_state/core/network/api_client.dart';
+import 'package:manage_state/core/network/token_manager.dart';
 
 class DependencyInjector {
   // Singleton instance
@@ -50,8 +51,29 @@ class DependencyInjector {
 
   DependencyInjector._internal();
 
-  // 1. Core Native ApiClient
-  late final ApiClient apiClient = ApiClient(baseUrl: 'https://api.example.com');
+  // 1. Core Services
+  late final TokenManager tokenManager = InMemoryTokenManager();
+  
+  late final ApiClient apiClient = ApiClient(
+    baseUrl: 'https://api.example.com',
+    tokenManager: tokenManager,
+    onRefreshToken: () async {
+      // Mock Refresh Token Logic
+      final currentRefreshToken = tokenManager.refreshToken;
+      if (currentRefreshToken == null) return false;
+
+      // Simulate API call to refresh token
+      await Future.delayed(const Duration(seconds: 1));
+      
+      // Save new mocked tokens
+      await tokenManager.saveTokens(
+        accessToken: 'new_access_token_mock',
+        refreshToken: 'new_refresh_token_mock',
+      );
+      
+      return true;
+    },
+  );
 
   // ==========================================
   // Home Feature
