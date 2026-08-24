@@ -1,48 +1,54 @@
-import 'package:flutter/material.dart';
-import 'package:manage_state/domain/marketplace/entities/marketplace_item.dart';
+import 'package:flutter/foundation.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
 import 'package:manage_state/domain/marketplace/usecases/get_marketplace_items_usecase.dart';
+import 'package:manage_state/presentation/marketplace/intents/marketplace_intent.dart';
+import 'package:manage_state/presentation/marketplace/states/marketplace_state.dart';
 
-class MarketplaceController extends ChangeNotifier {
+class MarketplaceController
+    extends MviController<MarketplaceIntent, MarketplaceState> {
   final GetMarketplaceItemsUseCase getItemsUseCase;
 
-  MarketplaceController({required this.getItemsUseCase}) {
-    _loadData();
+  MarketplaceController({required this.getItemsUseCase})
+    : super(const MarketplaceState()) {
+    onIntent(const LoadMarketplaceIntent());
   }
-
-  int _selectedTabIndex = 1; // "Explore" selected by default
-
-  int get selectedTabIndex => _selectedTabIndex;
 
   static const tabs = ['Sell', 'Explore', 'Local', 'More'];
 
-  void changeTab(int index) {
-    _selectedTabIndex = index;
-    notifyListeners();
+  @override
+  void onIntent(MarketplaceIntent intent) {
+    switch (intent) {
+      case LoadMarketplaceIntent():
+        _handleLoadData();
+      case RefreshMarketplaceIntent():
+        _handleRefreshData();
+      case ChangeMarketplaceTabIntent(:final index):
+        _handleChangeTab(index);
+    }
   }
 
-  List<MarketplaceItem> items = [];
-  bool isLoading = true;
-
-  Future<void> _loadData() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> _handleLoadData() async {
+    emit(value.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      items = await getItemsUseCase();
+      final items = await getItemsUseCase();
+      emit(value.copyWith(isLoading: false, items: items));
     } catch (e) {
       debugPrint('Error loading marketplace items: $e');
+      emit(value.copyWith(isLoading: false, errorMessage: e.toString()));
     }
-
-    isLoading = false;
-    notifyListeners();
   }
 
-  Future<void> refreshData() async {
+  Future<void> _handleRefreshData() async {
     try {
-      items = await getItemsUseCase();
+      final items = await getItemsUseCase();
+      emit(value.copyWith(items: items));
     } catch (e) {
       debugPrint('Error refreshing marketplace items: $e');
     }
-    notifyListeners();
+  }
+
+  void _handleChangeTab(int index) {
+    emit(value.copyWith(selectedTabIndex: index));
   }
 }

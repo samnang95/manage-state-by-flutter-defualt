@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
+import 'package:manage_state/presentation/navi/intents/navi_intent.dart';
+import 'package:manage_state/presentation/navi/states/navi_state.dart';
 
-class NaviController extends ChangeNotifier {
-  int _currentIndex = 0;
-  bool _isBottomNavVisible = true;
-
+class NaviController extends MviController<NaviIntent, NaviState> {
   final ScrollController homeScrollController = ScrollController();
 
-  int get currentIndex => _currentIndex;
-  bool get isBottomNavVisible => _isBottomNavVisible;
+  NaviController() : super(const NaviState());
 
-  void changeTab(int index) {
+  @override
+  void onIntent(NaviIntent intent) {
+    switch (intent) {
+      case ChangeNaviTabIntent(:final index):
+        _handleChangeTab(index);
+      case NaviScrollNotificationIntent(:final notification):
+        _handleScrollNotification(notification);
+    }
+  }
+
+  void _handleChangeTab(int index) {
     // If user clicks Home while already on Home, scroll to top
-    if (index == 0 && _currentIndex == 0) {
+    if (index == 0 && value.currentIndex == 0) {
       if (homeScrollController.hasClients) {
         homeScrollController.animateTo(
           0.0,
@@ -22,22 +31,27 @@ class NaviController extends ChangeNotifier {
       }
     }
 
-    _currentIndex = index;
-    _isBottomNavVisible = true;
-    notifyListeners();
+    emit(value.copyWith(
+      currentIndex: index,
+      isBottomNavVisible: true,
+    ));
   }
 
-  void onScroll(UserScrollNotification notification) {
-    if (_currentIndex != 0) return;
+  void _handleScrollNotification(UserScrollNotification notification) {
+    if (value.currentIndex != 0) return;
 
     if (notification.direction == ScrollDirection.reverse &&
-        _isBottomNavVisible) {
-      _isBottomNavVisible = false;
-      notifyListeners();
+        value.isBottomNavVisible) {
+      emit(value.copyWith(isBottomNavVisible: false));
     } else if (notification.direction == ScrollDirection.forward &&
-        !_isBottomNavVisible) {
-      _isBottomNavVisible = true;
-      notifyListeners();
+        !value.isBottomNavVisible) {
+      emit(value.copyWith(isBottomNavVisible: true));
     }
+  }
+
+  @override
+  void dispose() {
+    homeScrollController.dispose();
+    super.dispose();
   }
 }

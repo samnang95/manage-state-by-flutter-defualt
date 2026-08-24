@@ -1,84 +1,121 @@
-import 'package:flutter/material.dart';
-import 'package:manage_state/domain/notifications/entities/notification_item.dart';
+import 'package:flutter/foundation.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
 import 'package:manage_state/domain/notifications/usecases/get_notifications_usecase.dart';
+import 'package:manage_state/presentation/notifications/intents/notifications_intent.dart';
+import 'package:manage_state/presentation/notifications/states/notifications_state.dart';
 
-class NotificationsController extends ChangeNotifier {
+class NotificationsController
+    extends MviController<NotificationsIntent, NotificationsState> {
   final GetNotificationsUseCase getNotificationsUseCase;
 
-  NotificationsController({required this.getNotificationsUseCase}) {
-    _loadData();
+  NotificationsController({required this.getNotificationsUseCase})
+      : super(const NotificationsState()) {
+    onIntent(const LoadNotificationsIntent());
   }
 
-  List<NotificationItem> newNotifications = [];
-  List<NotificationItem> todayNotifications = [];
-  bool isLoading = true;
+  @override
+  void onIntent(NotificationsIntent intent) {
+    switch (intent) {
+      case LoadNotificationsIntent():
+        _handleLoadData();
+      case RefreshNotificationsIntent():
+        _handleRefreshData();
+      case MarkNotificationAsReadIntent(:final id):
+        _handleMarkAsRead(id);
+      case ToggleNotificationReadIntent(:final id):
+        _handleToggleRead(id);
+      case MarkAllNotificationsAsReadIntent():
+        _handleMarkAllAsRead();
+    }
+  }
 
-  Future<void> _loadData() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> _handleLoadData() async {
+    emit(value.copyWith(isLoading: true, errorMessage: null));
 
     try {
       final notifs = await getNotificationsUseCase();
-      newNotifications = notifs['new'] ?? [];
-      todayNotifications = notifs['today'] ?? [];
+      emit(value.copyWith(
+        isLoading: false,
+        newNotifications: notifs['new'] ?? [],
+        todayNotifications: notifs['today'] ?? [],
+      ));
     } catch (e) {
       debugPrint('Error loading notifications: $e');
-    }
-
-    isLoading = false;
-    notifyListeners();
-  }
-
-  int get unreadCount {
-    return newNotifications.where((n) => !n.isRead).length +
-        todayNotifications.where((n) => !n.isRead).length;
-  }
-
-  void markAsRead(String id) {
-    for (final n in newNotifications) {
-      if (n.id == id) {
-        n.isRead = true;
-        notifyListeners();
-        return;
-      }
-    }
-    for (final n in todayNotifications) {
-      if (n.id == id) {
-        n.isRead = true;
-        notifyListeners();
-        return;
-      }
+      emit(value.copyWith(isLoading: false, errorMessage: e.toString()));
     }
   }
 
-  void toggleRead(String id) {
-    for (final n in [...newNotifications, ...todayNotifications]) {
-      if (n.id == id) {
-        n.isRead = !n.isRead;
-        notifyListeners();
-        return;
-      }
-    }
-  }
-
-  void markAllAsRead() {
-    for (final n in newNotifications) {
-      n.isRead = true;
-    }
-    for (final n in todayNotifications) {
-      n.isRead = true;
-    }
-    notifyListeners();
-  }
-
-  Future<void> refreshData() async {
+  Future<void> _handleRefreshData() async {
     try {
       final notifs = await getNotificationsUseCase();
-      newNotifications = notifs['new'] ?? [];
-      todayNotifications = notifs['today'] ?? [];
+      emit(value.copyWith(
+        newNotifications: notifs['new'] ?? [],
+        todayNotifications: notifs['today'] ?? [],
+      ));
     } catch (e) {
       debugPrint('Error refreshing notifications: $e');
     }
-    notifyListeners();
+  }
+
+  void _handleMarkAsRead(String id) {
+    bool updated = false;
+
+    for (final n in value.newNotifications) {
+      if (n.id == id && !n.isRead) {
+        n.isRead = true;
+        updated = true;
+        break;
+      }
+    }
+
+    if (!updated) {
+      for (final n in value.todayNotifications) {
+        if (n.id == id && !n.isRead) {
+          n.isRead = true;
+          updated = true;
+          break;
+        }
+      }
+    }
+
+    if (updated) {
+      emit(value.copyWith(
+        newNotifications: List.of(value.newNotifications),
+        todayNotifications: List.of(value.todayNotifications),
+      ));
+    }
+  }
+
+  void _handleToggleRead(String id) {
+    bool updated = false;
+
+    for (final n in [...value.newNotifications, ...value.todayNotifications]) {
+      if (n.id == id) {
+        n.isRead = !n.isRead;
+        updated = true;
+        break;
+      }
+    }
+
+    if (updated) {
+      emit(value.copyWith(
+        newNotifications: List.of(value.newNotifications),
+        todayNotifications: List.of(value.todayNotifications),
+      ));
+    }
+  }
+
+  void _handleMarkAllAsRead() {
+    for (final n in value.newNotifications) {
+      n.isRead = true;
+    }
+    for (final n in value.todayNotifications) {
+      n.isRead = true;
+    }
+
+    emit(value.copyWith(
+      newNotifications: List.of(value.newNotifications),
+      todayNotifications: List.of(value.todayNotifications),
+    ));
   }
 }

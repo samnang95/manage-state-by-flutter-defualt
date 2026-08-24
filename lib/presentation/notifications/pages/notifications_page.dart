@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 import 'package:manage_state/presentation/notifications/controllers/notifications_controller.dart';
+import 'package:manage_state/presentation/notifications/intents/notifications_intent.dart';
+import 'package:manage_state/presentation/notifications/states/notifications_state.dart';
 import 'package:manage_state/presentation/notifications/widgets/notification_tile.dart';
 
 class NotificationsPage extends StatelessWidget {
@@ -14,17 +16,19 @@ class NotificationsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _controller,
-          builder: (context, _) {
-            if (_controller.isLoading) {
+        child: ValueListenableBuilder<NotificationsState>(
+          valueListenable: _controller,
+          builder: (context, state, _) {
+            if (state.isLoading) {
               return const Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               );
             }
 
             return RefreshIndicator(
-              onRefresh: _controller.refreshData,
+              onRefresh: () async {
+                _controller.onIntent(const RefreshNotificationsIntent());
+              },
               color: AppColors.primary,
               child: CustomScrollView(
                 slivers: [
@@ -94,14 +98,18 @@ class NotificationsPage extends StatelessWidget {
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        final item = _controller.newNotifications[index];
+                        final item = state.newNotifications[index];
                         return NotificationTile(
                           notification: item,
-                          onTap: () => _controller.markAsRead(item.id),
-                          onToggleRead: () => _controller.toggleRead(item.id),
+                          onTap: () {
+                            _controller.onIntent(MarkNotificationAsReadIntent(item.id));
+                          },
+                          onToggleRead: () {
+                            _controller.onIntent(ToggleNotificationReadIntent(item.id));
+                          },
                         );
                       },
-                      childCount: _controller.newNotifications.length,
+                      childCount: state.newNotifications.length,
                     ),
                   ),
                   // Divider
@@ -135,14 +143,18 @@ class NotificationsPage extends StatelessWidget {
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        final item = _controller.todayNotifications[index];
+                        final item = state.todayNotifications[index];
                         return NotificationTile(
                           notification: item,
-                          onTap: () => _controller.markAsRead(item.id),
-                          onToggleRead: () => _controller.toggleRead(item.id),
+                          onTap: () {
+                            _controller.onIntent(MarkNotificationAsReadIntent(item.id));
+                          },
+                          onToggleRead: () {
+                            _controller.onIntent(ToggleNotificationReadIntent(item.id));
+                          },
                         );
                       },
-                      childCount: _controller.todayNotifications.length,
+                      childCount: state.todayNotifications.length,
                     ),
                   ),
                   // Bottom padding

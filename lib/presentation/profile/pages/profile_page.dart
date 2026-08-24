@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 import 'package:manage_state/presentation/profile/controllers/profile_controller.dart';
+import 'package:manage_state/presentation/profile/intents/profile_intent.dart';
+import 'package:manage_state/presentation/profile/states/profile_state.dart';
 import 'package:manage_state/presentation/profile/widgets/profile_header.dart';
 import 'package:manage_state/presentation/profile/widgets/profile_info_section.dart';
 import 'package:manage_state/presentation/profile/widgets/profile_action_buttons.dart';
@@ -18,19 +20,21 @@ class ProfilePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _controller,
-          builder: (context, _) {
-            if (_controller.isLoading || _controller.userProfile == null) {
+        child: ValueListenableBuilder<ProfileState>(
+          valueListenable: _controller,
+          builder: (context, state, _) {
+            if (state.isLoading || state.userProfile == null) {
               return const Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               );
             }
 
-            final profile = _controller.userProfile!;
+            final profile = state.userProfile!;
 
             return RefreshIndicator(
-              onRefresh: _controller.refreshData,
+              onRefresh: () async {
+                _controller.onIntent(const RefreshProfileIntent());
+              },
               color: AppColors.primary,
               child: CustomScrollView(
                 slivers: [
@@ -51,8 +55,10 @@ class ProfilePage extends StatelessWidget {
                         const SizedBox(height: 4),
                         // Tab bar
                         ProfileTabBar(
-                          selectedIndex: _controller.selectedTabIndex,
-                          onTabChanged: _controller.changeTab,
+                          selectedIndex: state.selectedTabIndex,
+                          onTabChanged: (index) {
+                            _controller.onIntent(ChangeProfileTabIntent(index));
+                          },
                         ),
                         const SizedBox(height: 16),
                         // Personal details

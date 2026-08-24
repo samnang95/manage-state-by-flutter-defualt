@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/presentation/navi/controllers/navi_controller.dart';
+import 'package:manage_state/presentation/navi/intents/navi_intent.dart';
+import 'package:manage_state/presentation/navi/states/navi_state.dart';
 import 'package:manage_state/presentation/navi/widgets/nav_item.dart';
 import 'package:manage_state/presentation/navi/widgets/profile_nav_item.dart';
 import 'package:manage_state/presentation/home/pages/home_page.dart';
@@ -26,19 +28,19 @@ class NaviPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) {
-        final bool isReelsTab = _controller.currentIndex == 1;
+    return ValueListenableBuilder<NaviState>(
+      valueListenable: _controller,
+      builder: (context, state, _) {
+        final bool isReelsTab = state.currentIndex == 1;
 
         return Scaffold(
           body: NotificationListener<UserScrollNotification>(
             onNotification: (notification) {
-              _controller.onScroll(notification);
+              _controller.onIntent(NaviScrollNotificationIntent(notification));
               return false;
             },
             child: IndexedStack(
-              index: _controller.currentIndex,
+              index: state.currentIndex,
               children: _pages,
             ),
           ),
@@ -46,7 +48,7 @@ class NaviPage extends StatelessWidget {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             child: SizedBox(
-              height: _controller.isBottomNavVisible ? null : 0.0,
+              height: state.isBottomNavVisible ? null : 0.0,
               child: Wrap(
                 children: [
                   Container(
@@ -66,45 +68,57 @@ class NaviPage extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             NavItem(
-                              isSelected: _controller.currentIndex == 0,
+                              isSelected: state.currentIndex == 0,
                               icon: Icons.home_outlined,
                               activeIcon: Icons.home,
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(0),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(0));
+                              },
                             ),
                             NavItem(
-                              isSelected: _controller.currentIndex == 1,
+                              isSelected: state.currentIndex == 1,
                               icon: Icons.ondemand_video_outlined,
                               activeIcon: Icons.ondemand_video,
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(1),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(1));
+                              },
                             ),
                             NavItem(
-                              isSelected: _controller.currentIndex == 2,
+                              isSelected: state.currentIndex == 2,
                               icon: Icons.people_outline,
                               activeIcon: Icons.people,
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(2),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(2));
+                              },
                             ),
                             NavItem(
-                              isSelected: _controller.currentIndex == 3,
+                              isSelected: state.currentIndex == 3,
                               icon: Icons.storefront_outlined,
                               activeIcon: Icons.storefront,
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(3),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(3));
+                              },
                             ),
                             NavItem(
-                              isSelected: _controller.currentIndex == 4,
+                              isSelected: state.currentIndex == 4,
                               icon: Icons.notifications_outlined,
                               activeIcon: Icons.notifications,
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(4),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(4));
+                              },
                             ),
                             ProfileNavItem(
-                              isSelected: _controller.currentIndex == 5,
+                              isSelected: state.currentIndex == 5,
                               avatarUrl: 'https://i.pravatar.cc/150?img=3',
                               isDark: isReelsTab,
-                              onTap: () => _controller.changeTab(5),
+                              onTap: () {
+                                _controller.onIntent(const ChangeNaviTabIntent(5));
+                              },
                             ),
                           ],
                         ),

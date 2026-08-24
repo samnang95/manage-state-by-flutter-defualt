@@ -1,59 +1,66 @@
-import 'package:flutter/material.dart';
-import 'package:manage_state/domain/friends/entities/friend_request.dart';
+import 'package:flutter/foundation.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
 import 'package:manage_state/domain/friends/usecases/get_friend_requests_usecase.dart';
+import 'package:manage_state/presentation/friends/intents/friends_intent.dart';
+import 'package:manage_state/presentation/friends/states/friends_state.dart';
 
-class FriendsController extends ChangeNotifier {
+class FriendsController extends MviController<FriendsIntent, FriendsState> {
   final GetFriendRequestsUseCase getFriendRequestsUseCase;
 
-  FriendsController({required this.getFriendRequestsUseCase}) {
-    _loadData();
+  FriendsController({required this.getFriendRequestsUseCase})
+      : super(const FriendsState()) {
+    onIntent(const LoadFriendsIntent());
   }
 
-  // Filter chips
-  final List<String> filters = ['128 online', 'Suggestions', 'Your friends'];
-  int selectedFilterIndex = -1;
-
-  void selectFilter(int index) {
-    selectedFilterIndex = selectedFilterIndex == index ? -1 : index;
-    notifyListeners();
+  @override
+  void onIntent(FriendsIntent intent) {
+    switch (intent) {
+      case LoadFriendsIntent():
+        _handleLoadData();
+      case RefreshFriendsIntent():
+        _handleRefreshData();
+      case SelectFriendsFilterIntent(:final index):
+        _handleSelectFilter(index);
+      case ConfirmFriendRequestIntent(:final index):
+        _handleRemoveRequest(index);
+      case DeleteFriendRequestIntent(:final index):
+        _handleRemoveRequest(index);
+    }
   }
 
-  // Friend requests
-  List<FriendRequest> friendRequests = [];
-  bool isLoading = true;
-
-  Future<void> _loadData() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> _handleLoadData() async {
+    emit(value.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      friendRequests = await getFriendRequestsUseCase();
+      final requests = await getFriendRequestsUseCase();
+      emit(value.copyWith(
+        isLoading: false,
+        friendRequests: requests,
+      ));
     } catch (e) {
       debugPrint('Error loading friend requests: $e');
+      emit(value.copyWith(isLoading: false, errorMessage: e.toString()));
     }
-
-    isLoading = false;
-    notifyListeners();
   }
 
-  int get requestCount => friendRequests.length;
-
-  void confirmRequest(int index) {
-    friendRequests.removeAt(index);
-    notifyListeners();
-  }
-
-  void deleteRequest(int index) {
-    friendRequests.removeAt(index);
-    notifyListeners();
-  }
-
-  Future<void> refreshData() async {
+  Future<void> _handleRefreshData() async {
     try {
-      friendRequests = await getFriendRequestsUseCase();
+      final requests = await getFriendRequestsUseCase();
+      emit(value.copyWith(friendRequests: requests));
     } catch (e) {
       debugPrint('Error refreshing friend requests: $e');
     }
-    notifyListeners();
+  }
+
+  void _handleSelectFilter(int index) {
+    final newIndex = value.selectedFilterIndex == index ? -1 : index;
+    emit(value.copyWith(selectedFilterIndex: newIndex));
+  }
+
+  void _handleRemoveRequest(int index) {
+    if (index < 0 || index >= value.friendRequests.length) return;
+
+    final updated = List.of(value.friendRequests)..removeAt(index);
+    emit(value.copyWith(friendRequests: updated));
   }
 }
