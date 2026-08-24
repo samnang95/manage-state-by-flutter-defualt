@@ -1,41 +1,50 @@
-import 'package:flutter/material.dart';
-import 'package:manage_state/domain/auth/entities/user.dart';
+import 'package:flutter/foundation.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
 import 'package:manage_state/domain/auth/usecases/login_usecase.dart';
 import 'package:manage_state/data/auth/repositories/auth_repository_impl.dart';
 import 'package:manage_state/data/auth/datasources/auth_remote_datasource.dart';
+import 'package:manage_state/presentation/auth/intents/auth_intent.dart';
+import 'package:manage_state/presentation/auth/states/auth_state.dart';
 
-class AuthController extends ChangeNotifier {
-  // Simple dependency injection for example
-  final LoginUseCase _loginUseCase = LoginUseCase(
-    AuthRepositoryImpl(
-      AuthRemoteDataSourceImpl(),
-    ),
-  );
+class AuthController extends MviController<AuthIntent, AuthState> {
+  final LoginUseCase _loginUseCase;
 
-  bool _isLoading = false;
-  String _errorMessage = '';
-  User? _user;
+  AuthController({LoginUseCase? loginUseCase})
+      : _loginUseCase = loginUseCase ??
+            LoginUseCase(
+              AuthRepositoryImpl(
+                AuthRemoteDataSourceImpl(),
+              ),
+            ),
+        super(const AuthState());
 
-  bool get isLoading => _isLoading;
-  String get errorMessage => _errorMessage;
-  User? get user => _user;
+  @override
+  void onIntent(AuthIntent intent) {
+    switch (intent) {
+      case LoginIntent(:final email, :final password):
+        _handleLogin(email, password);
+      case ResetAuthErrorIntent():
+        emit(value.copyWith(errorMessage: ''));
+    }
+  }
 
-  Future<bool> login(String email, String password) async {
-    _isLoading = true;
-    _errorMessage = '';
-    notifyListeners();
+  Future<void> _handleLogin(String email, String password) async {
+    emit(value.copyWith(isLoading: true, errorMessage: '', isSuccess: false));
 
     try {
-      _user = await _loginUseCase.call(email, password);
-      _isLoading = false;
-      notifyListeners();
-      return true;
+      final user = await _loginUseCase.call(email, password);
+      emit(value.copyWith(
+        isLoading: false,
+        user: user,
+        isSuccess: true,
+      ));
     } catch (e) {
-      _isLoading = false;
-      _errorMessage = 'Invalid email or password';
-      notifyListeners();
-      return false;
+      debugPrint('Error logging in: $e');
+      emit(value.copyWith(
+        isLoading: false,
+        errorMessage: 'Invalid email or password',
+        isSuccess: false,
+      ));
     }
   }
 }
-

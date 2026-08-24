@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 import 'package:manage_state/presentation/reels/controllers/reels_controller.dart';
+import 'package:manage_state/presentation/reels/intents/reels_intent.dart';
+import 'package:manage_state/presentation/reels/states/reels_state.dart';
 import 'package:manage_state/presentation/reels/widgets/reel_video_widget.dart';
 
 class ReelsPage extends StatelessWidget {
@@ -13,10 +15,10 @@ class ReelsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.black,
-      body: ListenableBuilder(
-        listenable: _controller,
-        builder: (context, _) {
-          if (_controller.isLoading) {
+      body: ValueListenableBuilder<ReelsState>(
+        valueListenable: _controller,
+        builder: (context, state, _) {
+          if (state.isLoading) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
             );
@@ -26,14 +28,18 @@ class ReelsPage extends StatelessWidget {
             children: [
               // Full screen vertical pager
               RefreshIndicator(
-                onRefresh: _controller.refreshData,
+                onRefresh: () async {
+                  _controller.onIntent(const RefreshReelsIntent());
+                },
                 color: AppColors.primary,
                 child: PageView.builder(
                   scrollDirection: Axis.vertical,
-                  itemCount: _controller.reels.length,
-                  onPageChanged: _controller.onPageChanged,
+                  itemCount: state.reels.length,
+                  onPageChanged: (index) {
+                    _controller.onIntent(ChangeReelPageIntent(index));
+                  },
                   itemBuilder: (context, index) {
-                    return ReelVideoWidget(reel: _controller.reels[index]);
+                    return ReelVideoWidget(reel: state.reels[index]);
                   },
                 ),
               ),

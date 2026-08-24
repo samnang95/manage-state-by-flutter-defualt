@@ -1,45 +1,51 @@
-import 'package:flutter/material.dart';
-import 'package:manage_state/domain/reels/entities/reel_item.dart';
+import 'package:flutter/foundation.dart';
+import 'package:manage_state/core/mvi/mvi_controller.dart';
 import 'package:manage_state/domain/reels/usecases/get_reels_usecase.dart';
+import 'package:manage_state/presentation/reels/intents/reels_intent.dart';
+import 'package:manage_state/presentation/reels/states/reels_state.dart';
 
-class ReelsController extends ChangeNotifier {
+class ReelsController extends MviController<ReelsIntent, ReelsState> {
   final GetReelsUseCase getReelsUseCase;
 
-  ReelsController({required this.getReelsUseCase}) {
-    _loadData();
+  ReelsController({required this.getReelsUseCase})
+      : super(const ReelsState()) {
+    onIntent(const LoadReelsIntent());
   }
 
-  List<ReelItem> reels = [];
-  bool isLoading = true;
+  @override
+  void onIntent(ReelsIntent intent) {
+    switch (intent) {
+      case LoadReelsIntent():
+        _handleLoadData();
+      case RefreshReelsIntent():
+        _handleRefreshData();
+      case ChangeReelPageIntent(:final index):
+        _handleChangePage(index);
+    }
+  }
 
-  int _currentIndex = 0;
-  int get currentIndex => _currentIndex;
-
-  Future<void> _loadData() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> _handleLoadData() async {
+    emit(value.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      reels = await getReelsUseCase();
+      final reels = await getReelsUseCase();
+      emit(value.copyWith(isLoading: false, reels: reels));
     } catch (e) {
       debugPrint('Error loading reels: $e');
+      emit(value.copyWith(isLoading: false, errorMessage: e.toString()));
     }
-
-    isLoading = false;
-    notifyListeners();
   }
 
-  void onPageChanged(int index) {
-    _currentIndex = index;
-    notifyListeners();
-  }
-
-  Future<void> refreshData() async {
+  Future<void> _handleRefreshData() async {
     try {
-      reels = await getReelsUseCase();
+      final reels = await getReelsUseCase();
+      emit(value.copyWith(reels: reels));
     } catch (e) {
       debugPrint('Error refreshing reels: $e');
     }
-    notifyListeners();
+  }
+
+  void _handleChangePage(int index) {
+    emit(value.copyWith(currentIndex: index));
   }
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 import 'package:manage_state/presentation/home/controllers/home_controller.dart';
+import 'package:manage_state/presentation/home/intents/home_intent.dart';
+import 'package:manage_state/presentation/home/states/home_state.dart';
 import 'package:manage_state/presentation/home/widgets/create_post_section.dart';
 import 'package:manage_state/presentation/home/widgets/stories_section.dart';
 import 'package:manage_state/presentation/home/widgets/post_item.dart';
@@ -20,10 +22,10 @@ class HomePage extends StatelessWidget {
       body: SafeArea(
         child: Container(
           color: AppColors.neutral,
-          child: ListenableBuilder(
-            listenable: _controller,
-            builder: (context, _) {
-              if (_controller.isLoading) {
+          child: ValueListenableBuilder<HomeState>(
+            valueListenable: _controller,
+            builder: (context, state, _) {
+              if (state.isLoading) {
                 return const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
                 );
@@ -32,7 +34,9 @@ class HomePage extends StatelessWidget {
               return RefreshIndicator(
                 color: AppColors.primary,
                 backgroundColor: AppColors.white,
-                onRefresh: _controller.refreshData,
+                onRefresh: () async {
+                  _controller.onIntent(const RefreshHomeDataIntent());
+                },
                 child: CustomScrollView(
                   controller: scrollController,
                   slivers: [
@@ -103,7 +107,7 @@ class HomePage extends StatelessWidget {
                         children: [
                           const CreatePostSection(),
                           const SizedBox(height: 8),
-                          StoriesSection(stories: _controller.stories),
+                          StoriesSection(stories: state.stories),
                           const SizedBox(height: 8),
                         ],
                       ),
@@ -113,11 +117,13 @@ class HomePage extends StatelessWidget {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),
                           child: PostItem(
-                            post: _controller.posts[index],
-                            onLikeToggle: () => _controller.toggleLike(index),
+                            post: state.posts[index],
+                            onLikeToggle: () {
+                              _controller.onIntent(TogglePostLikeIntent(index));
+                            },
                           ),
                         );
-                      }, childCount: _controller.posts.length),
+                      }, childCount: state.posts.length),
                     ),
                   ],
                 ),

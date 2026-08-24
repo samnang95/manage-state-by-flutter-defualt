@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 import 'package:manage_state/presentation/marketplace/controllers/marketplace_controller.dart';
+import 'package:manage_state/presentation/marketplace/intents/marketplace_intent.dart';
+import 'package:manage_state/presentation/marketplace/states/marketplace_state.dart';
 import 'package:manage_state/presentation/marketplace/widgets/marketplace_tab_bar.dart';
 import 'package:manage_state/presentation/marketplace/widgets/marketplace_product_card.dart';
 
@@ -15,17 +17,19 @@ class MarketplacePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: _controller,
-          builder: (context, _) {
-            if (_controller.isLoading) {
+        child: ValueListenableBuilder<MarketplaceState>(
+          valueListenable: _controller,
+          builder: (context, state, _) {
+            if (state.isLoading) {
               return const Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               );
             }
 
             return RefreshIndicator(
-              onRefresh: _controller.refreshData,
+              onRefresh: () async {
+                _controller.onIntent(const RefreshMarketplaceIntent());
+              },
               color: AppColors.primary,
               child: CustomScrollView(
                 slivers: [
@@ -101,8 +105,10 @@ class MarketplacePage extends StatelessWidget {
                   // Tab bar
                   SliverToBoxAdapter(
                     child: MarketplaceTabBar(
-                      selectedIndex: _controller.selectedTabIndex,
-                      onTabChanged: _controller.changeTab,
+                      selectedIndex: state.selectedTabIndex,
+                      onTabChanged: (index) {
+                        _controller.onIntent(ChangeMarketplaceTabIntent(index));
+                      },
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -119,9 +125,9 @@ class MarketplacePage extends StatelessWidget {
                           ),
                       delegate: SliverChildBuilderDelegate((context, index) {
                         return MarketplaceProductCard(
-                          item: _controller.items[index],
+                          item: state.items[index],
                         );
-                      }, childCount: _controller.items.length),
+                      }, childCount: state.items.length),
                     ),
                   ),
                   // Bottom padding
