@@ -1,3 +1,5 @@
+import 'package:manage_state/core/network/api_client.dart';
+
 import 'package:manage_state/data/reels/models/reel_item_model.dart';
 
 abstract class ReelsRemoteDataSource {
@@ -5,6 +7,10 @@ abstract class ReelsRemoteDataSource {
 }
 
 class ReelsRemoteDataSourceImpl implements ReelsRemoteDataSource {
+  final ApiClient apiClient;
+
+  ReelsRemoteDataSourceImpl(this.apiClient);
+
   @override
   Future<List<ReelItemModel>> getReels() async {
     await Future.delayed(const Duration(milliseconds: 500));

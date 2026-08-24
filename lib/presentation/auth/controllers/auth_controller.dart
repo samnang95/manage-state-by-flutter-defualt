@@ -6,6 +6,8 @@ import 'package:manage_state/data/auth/datasources/auth_remote_datasource.dart';
 import 'package:manage_state/presentation/auth/intents/auth_intent.dart';
 import 'package:manage_state/presentation/auth/states/auth_state.dart';
 
+import 'package:manage_state/core/di/dependency_injector.dart';
+
 class AuthController extends MviController<AuthIntent, AuthState> {
   final LoginUseCase _loginUseCase;
 
@@ -13,7 +15,7 @@ class AuthController extends MviController<AuthIntent, AuthState> {
       : _loginUseCase = loginUseCase ??
             LoginUseCase(
               AuthRepositoryImpl(
-                AuthRemoteDataSourceImpl(),
+                AuthRemoteDataSourceImpl(DependencyInjector.instance.apiClient),
               ),
             ),
         super(const AuthState());

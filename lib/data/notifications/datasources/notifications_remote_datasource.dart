@@ -1,3 +1,5 @@
+import 'package:manage_state/core/network/api_client.dart';
+
 import 'package:manage_state/data/notifications/models/notification_item_model.dart';
 
 abstract class NotificationsRemoteDataSource {
@@ -6,6 +8,10 @@ abstract class NotificationsRemoteDataSource {
 }
 
 class NotificationsRemoteDataSourceImpl implements NotificationsRemoteDataSource {
+  final ApiClient apiClient;
+
+  NotificationsRemoteDataSourceImpl(this.apiClient);
+
   @override
   Future<List<NotificationItemModel>> getNewNotifications() async {
     await Future.delayed(const Duration(milliseconds: 500));

@@ -1,3 +1,5 @@
+import 'package:manage_state/core/network/api_client.dart';
+
 import 'package:manage_state/data/profile/models/user_profile_model.dart';
 
 abstract class ProfileRemoteDataSource {
@@ -5,6 +7,10 @@ abstract class ProfileRemoteDataSource {
 }
 
 class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
+  final ApiClient apiClient;
+
+  ProfileRemoteDataSourceImpl(this.apiClient);
+
   @override
   Future<UserProfileModel> getUserProfile() async {
     await Future.delayed(const Duration(milliseconds: 500));
