@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:manage_state/core/network/token_manager.dart';
 
-/// Custom Exception for API errors
+import 'token_manager.dart';
+
+/// ===============================================================
+/// API Exception
+/// ===============================================================
 class ApiException implements Exception {
   final int statusCode;
   final String message;
@@ -16,26 +19,52 @@ class ApiException implements Exception {
   });
 
   @override
-  String toString() => 'ApiException(statusCode: $statusCode, message: $message)';
+  String toString() {
+    return 'ApiException('
+        'statusCode: $statusCode, '
+        'message: $message'
+        ')';
+  }
 }
 
-/// Custom Exception for Network/Connection errors
+/// ===============================================================
+/// Network Exception
+/// ===============================================================
 class NetworkException implements Exception {
   final String message;
+
   NetworkException(this.message);
 
   @override
-  String toString() => 'NetworkException: $message';
+  String toString() {
+    return 'NetworkException: $message';
+  }
 }
 
-/// Built-in API Client using standard dart:io HttpClient
+/// ===============================================================
+/// API Client
+/// Built with dart:io HttpClient
+/// ===============================================================
 class ApiClient {
   final String baseUrl;
   final Duration timeout;
+
   final HttpClient _httpClient;
+
+  /// Manages access/refresh tokens.
   final TokenManager? tokenManager;
+
+  /// Called when access token expires.
+  ///
+  /// Should:
+  /// 1. Call refresh-token API
+  /// 2. Save the new access token
+  /// 3. Return true if successful
+  /// 4. Return false if refresh failed
   final Future<bool> Function()? onRefreshToken;
-  
+
+  /// Prevents multiple refresh-token requests
+  /// from running at the same time.
   Completer<bool>? _refreshCompleter;
 
   ApiClient({
@@ -47,14 +76,15 @@ class ApiClient {
     _httpClient.connectionTimeout = timeout;
   }
 
-  // ===========================================================================
-  // HTTP GET
-  // ===========================================================================
+  // ===============================================================
+  // GET
+  // ===============================================================
+
   Future<dynamic> get(
     String endpoint, {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParams,
-  }) async {
+  }) {
     return _sendRequest(
       method: 'GET',
       endpoint: endpoint,
@@ -63,14 +93,15 @@ class ApiClient {
     );
   }
 
-  // ===========================================================================
-  // HTTP POST
-  // ===========================================================================
+  // ===============================================================
+  // POST
+  // ===============================================================
+
   Future<dynamic> post(
     String endpoint, {
     Map<String, String>? headers,
     dynamic body,
-  }) async {
+  }) {
     return _sendRequest(
       method: 'POST',
       endpoint: endpoint,
@@ -79,14 +110,15 @@ class ApiClient {
     );
   }
 
-  // ===========================================================================
-  // HTTP PUT
-  // ===========================================================================
+  // ===============================================================
+  // PUT
+  // ===============================================================
+
   Future<dynamic> put(
     String endpoint, {
     Map<String, String>? headers,
     dynamic body,
-  }) async {
+  }) {
     return _sendRequest(
       method: 'PUT',
       endpoint: endpoint,
@@ -95,14 +127,32 @@ class ApiClient {
     );
   }
 
-  // ===========================================================================
-  // HTTP DELETE
-  // ===========================================================================
+  // ===============================================================
+  // PATCH
+  // ===============================================================
+
+  Future<dynamic> patch(
+    String endpoint, {
+    Map<String, String>? headers,
+    dynamic body,
+  }) {
+    return _sendRequest(
+      method: 'PATCH',
+      endpoint: endpoint,
+      headers: headers,
+      body: body,
+    );
+  }
+
+  // ===============================================================
+  // DELETE
+  // ===============================================================
+
   Future<dynamic> delete(
     String endpoint, {
     Map<String, String>? headers,
     dynamic body,
-  }) async {
+  }) {
     return _sendRequest(
       method: 'DELETE',
       endpoint: endpoint,
@@ -111,9 +161,10 @@ class ApiClient {
     );
   }
 
-  // ===========================================================================
-  // Core Request Handler
-  // ===========================================================================
+  // ===============================================================
+  // CORE REQUEST
+  // ===============================================================
+
   Future<dynamic> _sendRequest({
     required String method,
     required String endpoint,
@@ -122,57 +173,113 @@ class ApiClient {
     dynamic body,
     bool isRetry = false,
   }) async {
-    // Wait if a token refresh is currently in progress
-    if (_refreshCompleter != null && !isRetry) {
-      final success = await _refreshCompleter!.future;
-      if (!success) {
-        throw ApiException(statusCode: 401, message: 'Session expired');
-      }
-    }
-
     try {
-      final uri = _buildUri(endpoint, queryParams);
-      final HttpClientRequest request = await _httpClient.openUrl(method, uri).timeout(timeout);
+      // -------------------------------------------------------------
+      // If another request is refreshing the token,
+      // wait for it before sending this request.
+      // -------------------------------------------------------------
+      if (_refreshCompleter != null && !isRetry) {
+        final success = await _refreshCompleter!.future;
 
-      // Default Headers
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json; charset=utf-8');
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-
-      // Authorization Header
-      if (tokenManager != null && tokenManager!.hasToken) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${tokenManager!.accessToken}');
+        if (!success) {
+          throw ApiException(
+            statusCode: 401,
+            message: 'Session expired',
+          );
+        }
       }
 
-      // Custom Headers
+      // -------------------------------------------------------------
+      // Build URL
+      // -------------------------------------------------------------
+      final uri = _buildUri(
+        endpoint,
+        queryParams,
+      );
+
+      // -------------------------------------------------------------
+      // Open request
+      // -------------------------------------------------------------
+      final request = await _httpClient
+          .openUrl(method, uri)
+          .timeout(timeout);
+
+      // -------------------------------------------------------------
+      // Default headers
+      // -------------------------------------------------------------
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'application/json; charset=utf-8',
+      );
+
+      request.headers.set(
+        HttpHeaders.acceptHeader,
+        'application/json',
+      );
+
+      // -------------------------------------------------------------
+      // Authorization
+      // -------------------------------------------------------------
+      if (tokenManager != null &&
+          tokenManager!.hasToken) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${tokenManager!.accessToken}',
+        );
+      }
+
+      // -------------------------------------------------------------
+      // Custom headers
+      // -------------------------------------------------------------
       headers?.forEach((key, value) {
         request.headers.set(key, value);
       });
 
-      // Write Request Body if present
+      // -------------------------------------------------------------
+      // Request body
+      // -------------------------------------------------------------
       if (body != null) {
-        final jsonString = body is String ? body : jsonEncode(body);
-        request.write(jsonString);
+        final jsonString = body is String
+            ? body
+            : jsonEncode(body);
+
+        final bytes = utf8.encode(jsonString);
+        request.headers.contentLength = bytes.length;
+        request.add(bytes);
       }
 
-      // Close and wait for response
-      final HttpClientResponse response = await request.close().timeout(timeout);
-      final responseBody = await response.transform(utf8.decoder).join();
+      // -------------------------------------------------------------
+      // Send request
+      // -------------------------------------------------------------
+      final response = await request
+          .close()
+          .timeout(timeout);
 
-      // Handle 401 Unauthorized
-      if (response.statusCode == 401 && !isRetry && onRefreshToken != null) {
-        if (_refreshCompleter == null) {
-          _refreshCompleter = Completer<bool>();
-          try {
-            final success = await onRefreshToken!();
-            _refreshCompleter!.complete(success);
-          } catch (e) {
-            _refreshCompleter!.complete(false);
-          } finally {
-            _refreshCompleter = null;
-          }
+      // -------------------------------------------------------------
+      // Read response
+      // -------------------------------------------------------------
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join();
+
+      // -------------------------------------------------------------
+      // Handle 401
+      // -------------------------------------------------------------
+      if (response.statusCode == 401 &&
+          !isRetry &&
+          onRefreshToken != null) {
+        final refreshSuccess = await _refreshToken();
+
+        // Refresh failed
+        if (!refreshSuccess) {
+          throw ApiException(
+            statusCode: 401,
+            message: 'Session expired',
+          );
         }
-        
-        // Retry the request after refresh attempt
+
+        // Refresh succeeded
+        // Retry original request once.
         return _sendRequest(
           method: method,
           endpoint: endpoint,
@@ -183,58 +290,209 @@ class ApiClient {
         );
       }
 
-      return _processResponse(response.statusCode, responseBody);
-    } on SocketException catch (e) {
-      throw NetworkException('No Internet connection or server unreachable: ${e.message}');
-    } on TimeoutException {
-      throw NetworkException('Request timed out. Please try again.');
-    } on HttpException catch (e) {
-      throw NetworkException('HTTP Error: ${e.message}');
-    } catch (e) {
-      if (e is ApiException || e is NetworkException) rethrow;
-      throw NetworkException('Unexpected error: $e');
-    }
-  }
-
-  Uri _buildUri(String endpoint, Map<String, dynamic>? queryParams) {
-    final fullUrl = baseUrl.isEmpty ? endpoint : '$baseUrl$endpoint';
-    final uri = Uri.parse(fullUrl);
-
-    if (queryParams == null || queryParams.isEmpty) {
-      return uri;
+      // -------------------------------------------------------------
+      // Process response
+      // -------------------------------------------------------------
+      return _processResponse(
+        response.statusCode,
+        responseBody,
+      );
     }
 
-    final stringParams = queryParams.map((k, v) => MapEntry(k, v.toString()));
-    return uri.replace(queryParameters: {
-      ...uri.queryParameters,
-      ...stringParams,
-    });
-  }
+    // =============================================================
+    // NETWORK ERRORS
+    // =============================================================
 
-  dynamic _processResponse(int statusCode, String responseBody) {
-    dynamic decodedData;
-    if (responseBody.isNotEmpty) {
-      try {
-        decodedData = jsonDecode(responseBody);
-      } catch (_) {
-        decodedData = responseBody;
-      }
+    on SocketException catch (e) {
+      throw NetworkException(
+        'No Internet connection or server unreachable: '
+        '${e.message}',
+      );
     }
 
-    if (statusCode >= 200 && statusCode < 300) {
-      return decodedData;
-    } else {
-      throw ApiException(
-        statusCode: statusCode,
-        message: decodedData is Map && decodedData['message'] != null
-            ? decodedData['message'].toString()
-            : 'HTTP Error $statusCode',
-        data: decodedData,
+    on TimeoutException {
+      throw NetworkException(
+        'Request timed out. Please try again.',
+      );
+    }
+
+    on HttpException catch (e) {
+      throw NetworkException(
+        'HTTP error: ${e.message}',
+      );
+    }
+
+    // =============================================================
+    // API ERRORS
+    // =============================================================
+
+    on ApiException {
+      rethrow;
+    }
+
+    // =============================================================
+    // UNEXPECTED ERRORS
+    // =============================================================
+
+    catch (e) {
+      throw NetworkException(
+        'Unexpected error: $e',
       );
     }
   }
 
-  void close() {
-    _httpClient.close(force: true);
+  // ===============================================================
+  // REFRESH TOKEN
+  // ===============================================================
+
+  Future<bool> _refreshToken() async {
+    // -------------------------------------------------------------
+    // Another request is already refreshing.
+    // Wait for that same refresh operation.
+    // -------------------------------------------------------------
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
+    }
+
+    // -------------------------------------------------------------
+    // Create refresh completer
+    // -------------------------------------------------------------
+    _refreshCompleter = Completer<bool>();
+
+    try {
+      final success = await onRefreshToken!();
+
+      _refreshCompleter!.complete(success);
+
+      return success;
+    } catch (_) {
+      _refreshCompleter!.complete(false);
+
+      return false;
+    } finally {
+      _refreshCompleter = null;
+    }
+  }
+
+  // ===============================================================
+  // BUILD URI
+  // ===============================================================
+
+  Uri _buildUri(
+    String endpoint,
+    Map<String, dynamic>? queryParams,
+  ) {
+    final String fullUrl;
+
+    if (baseUrl.isEmpty) {
+      fullUrl = endpoint;
+    } else {
+      final normalizedBaseUrl =
+          baseUrl.replaceFirst(
+        RegExp(r'/$'),
+        '',
+      );
+
+      final normalizedEndpoint =
+          endpoint.replaceFirst(
+        RegExp(r'^/'),
+        '',
+      );
+
+      fullUrl =
+          '$normalizedBaseUrl/$normalizedEndpoint';
+    }
+
+    final uri = Uri.parse(fullUrl);
+
+    // No query parameters
+    if (queryParams == null ||
+        queryParams.isEmpty) {
+      return uri;
+    }
+
+    final params = queryParams.map(
+      (key, value) {
+        if (value is Iterable) {
+          return MapEntry(
+            key,
+            value.map((e) => e.toString()).toList(),
+          );
+        }
+        return MapEntry(
+          key,
+          value.toString(),
+        );
+      },
+    );
+
+    return uri.replace(
+      queryParameters: {
+        ...uri.queryParameters,
+        ...params,
+      },
+    );
+  }
+
+  // ===============================================================
+  // PROCESS RESPONSE
+  // ===============================================================
+
+  dynamic _processResponse(
+    int statusCode,
+    String responseBody,
+  ) {
+    dynamic decodedData;
+
+    // -------------------------------------------------------------
+    // Decode JSON
+    // -------------------------------------------------------------
+    if (responseBody.isNotEmpty) {
+      try {
+        decodedData = jsonDecode(responseBody);
+      } catch (_) {
+        // Server returned plain text
+        decodedData = responseBody;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Success: 200 - 299
+    // -------------------------------------------------------------
+    if (statusCode >= 200 &&
+        statusCode < 300) {
+      return decodedData;
+    }
+
+    // -------------------------------------------------------------
+    // Error
+    // -------------------------------------------------------------
+    String message = 'HTTP Error $statusCode';
+
+    if (decodedData is Map) {
+      if (decodedData['message'] != null) {
+        message =
+            decodedData['message'].toString();
+      } else if (decodedData['error'] != null) {
+        message =
+            decodedData['error'].toString();
+      }
+    }
+
+    throw ApiException(
+      statusCode: statusCode,
+      message: message,
+      data: decodedData,
+    );
+  }
+
+  // ===============================================================
+  // DISPOSE
+  // ===============================================================
+
+  void dispose() {
+    _httpClient.close(
+      force: true,
+    );
   }
 }
