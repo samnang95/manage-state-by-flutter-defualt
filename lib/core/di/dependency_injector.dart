@@ -41,8 +41,16 @@ import 'package:manage_state/domain/profile/repositories/profile_repository.dart
 import 'package:manage_state/domain/profile/usecases/get_user_profile_usecase.dart';
 import 'package:manage_state/presentation/profile/controllers/profile_controller.dart';
 
+// Comments
+import 'package:manage_state/data/comments/datasources/comments_remote_datasource.dart';
+import 'package:manage_state/data/comments/repositories/comments_repository_impl.dart';
+import 'package:manage_state/domain/comments/repositories/comments_repository.dart';
+import 'package:manage_state/domain/comments/usecases/get_comments_usecase.dart';
+import 'package:manage_state/presentation/comments/controllers/comments_controller.dart';
+
 import 'package:manage_state/core/network/api_client.dart';
 import 'package:manage_state/core/network/token_manager.dart';
+import 'package:manage_state/core/network/env_config.dart';
 
 class DependencyInjector {
   // Singleton instance
@@ -55,7 +63,7 @@ class DependencyInjector {
   late final TokenManager tokenManager = InMemoryTokenManager();
   
   late final ApiClient apiClient = ApiClient(
-    baseUrl: 'https://api.example.com',
+    baseUrl: EnvConfig.baseUrl,
     tokenManager: tokenManager,
     onRefreshToken: () async {
       // Mock Refresh Token Logic
@@ -129,6 +137,15 @@ class DependencyInjector {
   late final GetUserProfileUseCase _getUserProfileUseCase = GetUserProfileUseCase(_profileRepository);
 
   ProfileController getProfileController() => ProfileController(getUserProfileUseCase: _getUserProfileUseCase);
+
+  // ==========================================
+  // Comments Feature
+  // ==========================================
+  late final CommentsRemoteDataSource _commentsDataSource = CommentsRemoteDataSourceImpl(apiClient);
+  late final CommentsRepository _commentsRepository = CommentsRepositoryImpl(_commentsDataSource);
+  late final GetCommentsUseCase _getCommentsUseCase = GetCommentsUseCase(_commentsRepository);
+
+  CommentsController getCommentsController() => CommentsController(getCommentsUseCase: _getCommentsUseCase);
 
   // Initialize method for potential async setup in the future
   Future<void> init() async {

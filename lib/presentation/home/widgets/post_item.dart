@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/domain/home/entities/post.dart';
+import 'package:manage_state/presentation/comments/pages/comments_page.dart';
 
 class PostItem extends StatelessWidget {
   final Post post;
@@ -82,7 +83,15 @@ class PostItem extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text('${post.likes}', style: const TextStyle(color: Colors.black54)),
                 const Spacer(),
-                Text('${post.comments} comments   ${post.shares} shares', style: const TextStyle(color: Colors.black54)),
+                // Old static text code (hidden):
+                // Text('${post.comments} comments   ${post.shares} shares', style: const TextStyle(color: Colors.black54)),
+                GestureDetector(
+                  onTap: () => CommentsPage.show(context),
+                  child: Text(
+                    '${post.comments} comments   ${post.shares} shares', 
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                ),
               ],
             ),
           ),
@@ -100,7 +109,9 @@ class PostItem extends StatelessWidget {
                 icon: Icons.comment_outlined, 
                 label: 'Comment',
                 isActive: false,
-                onPressed: () {},
+                onPressed: () {
+                  CommentsPage.show(context);
+                },
               ),
               _buildFooterActionButton(
                 icon: Icons.share_outlined, 
