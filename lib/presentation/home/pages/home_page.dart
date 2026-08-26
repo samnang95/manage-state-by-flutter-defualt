@@ -7,6 +7,7 @@ import 'package:manage_state/presentation/home/states/home_state.dart';
 import 'package:manage_state/presentation/home/widgets/create_post_section.dart';
 import 'package:manage_state/presentation/home/widgets/stories_section.dart';
 import 'package:manage_state/presentation/home/widgets/post_item.dart';
+import 'package:manage_state/presentation/camera/pages/native_camera_page.dart';
 
 class HomePage extends StatelessWidget {
   final ScrollController? scrollController;
@@ -80,6 +81,21 @@ class HomePage extends StatelessWidget {
                                   color: AppColors.black,
                                 ),
                                 onTap: () {},
+                              ),
+                              const SizedBox(width: 16),
+                              
+                              // Camera feature 
+                              GestureDetector(
+                                child: const Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: AppColors.black,
+                                ),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => NativeCameraPage()),
+                                  );
+                                },
                               ),
                               const SizedBox(width: 16),
                               GestureDetector(
