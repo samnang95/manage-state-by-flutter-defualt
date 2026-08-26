@@ -8,6 +8,7 @@ import 'package:manage_state/presentation/home/widgets/create_post_section.dart'
 import 'package:manage_state/presentation/home/widgets/stories_section.dart';
 import 'package:manage_state/presentation/home/widgets/post_item.dart';
 import 'package:manage_state/presentation/camera/pages/native_camera_page.dart';
+import 'package:manage_state/core/services/native_file_service.dart';
 
 class HomePage extends StatelessWidget {
   final ScrollController? scrollController;
@@ -95,6 +96,30 @@ class HomePage extends StatelessWidget {
                                     context,
                                     MaterialPageRoute(builder: (_) => NativeCameraPage()),
                                   );
+                                },
+                              ),
+                              const SizedBox(width: 16),
+                              
+                              // Upload document feature
+                              GestureDetector(
+                                child: const Icon(
+                                  Icons.description_outlined,
+                                  color: AppColors.black,
+                                ),
+                                onTap: () async {
+                                  final service = NativeFileService();
+                                  final path = await service.pickFile();
+                                  if (path != null && context.mounted) {
+                                    // 1. Save File Permanently
+                                    final fileName = path.split('/').last;
+                                    final savedPath = await service.saveFileToDocuments(path, fileName);
+                                    
+                                    if (savedPath != null && context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('File saved to:\n$savedPath')),
+                                      );
+                                    }
+                                  }
                                 },
                               ),
                               const SizedBox(width: 16),

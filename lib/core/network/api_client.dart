@@ -162,6 +162,65 @@ class ApiClient {
   }
 
   // ===============================================================
+  // UPLOAD FILE (MULTIPART)
+  // ===============================================================
+
+  Future<dynamic> uploadFile(
+    String endpoint,
+    File file,
+    String fieldName, {
+    Map<String, String>? headers,
+  }) async {
+    try {
+      if (_refreshCompleter != null) {
+        final success = await _refreshCompleter!.future;
+        if (!success) {
+          throw ApiException(statusCode: 401, message: 'Session expired');
+        }
+      }
+
+      final uri = _buildUri(endpoint, null);
+      final request = await _httpClient.openUrl('POST', uri).timeout(timeout);
+
+      final boundary = '----Boundary${DateTime.now().millisecondsSinceEpoch}';
+      
+      request.headers.set(
+        HttpHeaders.contentTypeHeader,
+        'multipart/form-data; boundary=$boundary',
+      );
+
+      if (tokenManager != null && tokenManager!.hasToken) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${tokenManager!.accessToken}',
+        );
+      }
+
+      headers?.forEach((key, value) {
+        request.headers.set(key, value);
+      });
+
+      final fileName = file.uri.pathSegments.last;
+      
+      request.write('--$boundary\r\n');
+      request.write('Content-Disposition: form-data; name="$fieldName"; filename="$fileName"\r\n');
+      request.write('Content-Type: application/octet-stream\r\n\r\n');
+      
+      await request.addStream(file.openRead());
+      
+      request.write('\r\n--$boundary--\r\n');
+
+      final response = await request.close().timeout(timeout);
+      final responseBody = await response.transform(utf8.decoder).join();
+
+      return _processResponse(response.statusCode, responseBody);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw NetworkException('Upload error: $e');
+    }
+  }
+
+  // ===============================================================
   // CORE REQUEST
   // ===============================================================
 

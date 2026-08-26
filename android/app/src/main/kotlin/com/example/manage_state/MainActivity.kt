@@ -1,8 +1,10 @@
 package com.example.manage_state
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
+import android.net.Uri
 import android.util.Log
 import android.view.Surface
 import androidx.core.app.ActivityCompat
@@ -14,12 +16,18 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.manage_state/camera"
+    private val FILE_CHANNEL = "com.example.manage_state/file"
     private val CAMERA_REQUEST_CODE = 1001
+    private val FILE_PICKER_REQUEST_CODE = 1002
 
     private var pendingResult: MethodChannel.Result? = null
+    private var pendingFileResult: MethodChannel.Result? = null
 
     private var isFrontCamera = false
     private var cameraProvider: ProcessCameraProvider? = null
@@ -44,6 +52,32 @@ class MainActivity: FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "pickFile") {
+                pendingFileResult = result
+                val intent = Intent(Intent.ACTION_GET_CONTENT)
+                intent.type = "*/*"
+                startActivityForResult(intent, FILE_PICKER_REQUEST_CODE)
+            } else if (call.method == "saveFile") {
+                val tempPath = call.argument<String>("tempPath")
+                val fileName = call.argument<String>("fileName")
+                if (tempPath != null && fileName != null) {
+                    try {
+                        val tempFile = File(tempPath)
+                        val permFile = File(filesDir, fileName)
+                        tempFile.copyTo(permFile, overwrite = true)
+                        result.success(permFile.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("FILE_ERROR", "Failed to copy file", e.message)
+                    }
+                } else {
+                    result.error("INVALID_ARGS", "Missing arguments", null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -60,6 +94,50 @@ class MainActivity: FlutterActivity() {
             }
             pendingResult = null
         }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == FILE_PICKER_REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                val uri: Uri? = data.data
+                if (uri != null) {
+                    val filePath = copyFileToCache(uri)
+                    if (filePath != null) {
+                        pendingFileResult?.success(filePath)
+                    } else {
+                        pendingFileResult?.error("FILE_ERROR", "Failed to get file path", null)
+                    }
+                } else {
+                    pendingFileResult?.error("FILE_ERROR", "No file selected", null)
+                }
+            } else {
+                pendingFileResult?.success(null)
+            }
+            pendingFileResult = null
+        }
+    }
+
+    private fun copyFileToCache(uri: Uri): String? {
+        try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            if (inputStream != null) {
+                val tempFile = File(cacheDir, "picked_file_${System.currentTimeMillis()}")
+                val outputStream = FileOutputStream(tempFile)
+                val buffer = ByteArray(4 * 1024)
+                var read: Int
+                while (inputStream.read(buffer).also { read = it } != -1) {
+                    outputStream.write(buffer, 0, read)
+                }
+                outputStream.flush()
+                outputStream.close()
+                inputStream.close()
+                return tempFile.absolutePath
+            }
+        } catch (e: Exception) {
+            Log.e("NativeFile", "Failed to copy file", e)
+        }
+        return null
     }
 
     private fun startCameraFeed(flutterEngine: FlutterEngine, result: MethodChannel.Result) {

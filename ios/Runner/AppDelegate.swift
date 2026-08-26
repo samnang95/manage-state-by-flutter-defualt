@@ -3,8 +3,9 @@ import UIKit
 import AVFoundation
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, UIDocumentPickerDelegate {
   private var cameraHandler: CameraStreamHandler?
+  private var pendingFileResult: FlutterResult?
 
   override func application(
     _ application: UIApplication,
@@ -13,6 +14,8 @@ import AVFoundation
     let registrar = self.registrar(forPlugin: "com.example.manage_state")!
     let cameraChannel = FlutterMethodChannel(name: "com.example.manage_state/camera",
                                              binaryMessenger: registrar.messenger())
+    let fileChannel = FlutterMethodChannel(name: "com.example.manage_state/file",
+                                           binaryMessenger: registrar.messenger())
     
     cameraHandler = CameraStreamHandler(textureRegistry: registrar.textures())
     
@@ -31,11 +34,83 @@ import AVFoundation
       }
     })
 
+    fileChannel.setMethodCallHandler({ [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+      if call.method == "pickFile" {
+        self?.pendingFileResult = result
+        let documentPicker = UIDocumentPickerViewController(documentTypes: ["public.item"], in: .import)
+        documentPicker.delegate = self
+        var rootVC = self?.window?.rootViewController
+        if rootVC == nil {
+            rootVC = UIApplication.shared.connectedScenes
+                .filter { $0.activationState == .foregroundActive }
+                .compactMap { $0 as? UIWindowScene }
+                .first?.windows
+                .filter { $0.isKeyWindow }
+                .first?.rootViewController
+        }
+        if rootVC == nil {
+            rootVC = UIApplication.shared.windows.filter { $0.isKeyWindow }.first?.rootViewController
+        }
+
+        if let viewController = rootVC {
+          viewController.present(documentPicker, animated: true, completion: nil)
+        } else {
+          result(FlutterError(code: "UI_ERROR", message: "Could not find root view controller", details: nil))
+          self?.pendingFileResult = nil
+        }
+      } else if call.method == "saveFile" {
+        guard let args = call.arguments as? [String: Any],
+              let tempPath = args["tempPath"] as? String,
+              let fileName = args["fileName"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+          return
+        }
+        
+        let fileManager = FileManager.default
+        let tempUrl = URL(fileURLWithPath: tempPath)
+        
+        do {
+            let documentDirectory = try fileManager.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let permanentUrl = documentDirectory.appendingPathComponent(fileName)
+            
+            if fileManager.fileExists(atPath: permanentUrl.path) {
+                try fileManager.removeItem(at: permanentUrl)
+            }
+            
+            try fileManager.copyItem(at: tempUrl, to: permanentUrl)
+            result(permanentUrl.path)
+        } catch {
+            result(FlutterError(code: "FILE_ERROR", message: "Failed to save file", details: error.localizedDescription))
+        }
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    })
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+  }
+
+  // MARK: - UIDocumentPickerDelegate
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    guard let url = urls.first else {
+      pendingFileResult?(nil)
+      pendingFileResult = nil
+      return
+    }
+    
+    // .import mode already copies the file to a temporary location accessible by the app.
+    // We can just return the path.
+    pendingFileResult?(url.path)
+    pendingFileResult = nil
+  }
+  
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    pendingFileResult?(nil)
+    pendingFileResult = nil
   }
 }
 
