@@ -113,6 +113,27 @@ class LoginView extends StatelessWidget {
               );
             },
           ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<AuthState>(
+            valueListenable: controller,
+            builder: (context, state, _) {
+              return OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Color(0xFFDB4437)),
+                  foregroundColor: const Color(0xFFDB4437),
+                ),
+                icon: const Icon(Icons.g_mobiledata, size: 28),
+                label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                onPressed: state.isLoading
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        controller.onIntent(const LoginWithGoogleIntent());
+                      },
+              );
+            },
+          ),
         ],
       ),
     );

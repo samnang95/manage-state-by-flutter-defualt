@@ -3,6 +3,9 @@ import UIKit
 import AVFoundation
 import FBSDKCoreKit
 import FBSDKLoginKit
+import FirebaseCore
+import FirebaseAuth
+import GoogleSignIn
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, UIDocumentPickerDelegate {
@@ -13,6 +16,7 @@ import FBSDKLoginKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    FirebaseApp.configure()
     ApplicationDelegate.shared.application(
         application,
         didFinishLaunchingWithOptions: launchOptions
@@ -118,6 +122,51 @@ import FBSDKLoginKit
                 result(FlutterError(code: "ERROR", message: "Unknown error", details: nil))
             }
         }
+      } else if call.method == "loginWithGoogle" {
+        guard let rootVC = UIApplication.shared.windows.filter({ $0.isKeyWindow }).first?.rootViewController else {
+            result(FlutterError(code: "ERROR", message: "Could not find root view controller", details: nil))
+            return
+        }
+        
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            result(FlutterError(code: "ERROR", message: "No client ID found in Firebase configuration", details: nil))
+            return
+        }
+        
+        let config = GIDConfiguration(clientID: clientID)
+        GIDSignIn.sharedInstance.configuration = config
+        
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { signInResult, error in
+            if let error = error {
+                result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+                return
+            }
+            
+            guard let idToken = signInResult?.user.idToken?.tokenString else {
+                result(FlutterError(code: "ERROR", message: "Failed to get ID token", details: nil))
+                return
+            }
+            
+            let credential = GoogleAuthProvider.credential(withIDToken: idToken,
+                                                           accessToken: signInResult?.user.accessToken.tokenString ?? "")
+            
+            Auth.auth().signIn(with: credential) { authResult, error in
+                if let error = error {
+                    result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+                    return
+                }
+                
+                authResult?.user.getIDTokenForcingRefresh(true) { token, error in
+                    if let error = error {
+                        result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+                    } else if let token = token {
+                        result(token)
+                    } else {
+                        result(FlutterError(code: "ERROR", message: "Failed to get Firebase token", details: nil))
+                    }
+                }
+            }
+        }
       } else {
         result(FlutterMethodNotImplemented)
       }
@@ -131,12 +180,18 @@ import FBSDKLoginKit
       open url: URL,
       options: [UIApplication.OpenURLOptionsKey : Any] = [:]
   ) -> Bool {
-      let handled = ApplicationDelegate.shared.application(
-          app,
-          open: url,
-          sourceApplication: options[UIApplication.OpenURLOptionsKey.sourceApplication] as? String,
-          annotation: options[UIApplication.OpenURLOptionsKey.annotation]
-      )
+      var handled: Bool = false
+      
+      if url.absoluteString.contains("fb4493606790853205") {
+          handled = ApplicationDelegate.shared.application(
+              app,
+              open: url,
+              sourceApplication: options[UIApplication.OpenURLOptionsKey.sourceApplication] as? String,
+              annotation: options[UIApplication.OpenURLOptionsKey.annotation]
+          )
+      } else {
+          handled = GIDSignIn.sharedInstance.handle(url)
+      }
       
       if (!handled) {
           return super.application(app, open: url, options: options)

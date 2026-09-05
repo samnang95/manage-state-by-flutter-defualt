@@ -33,6 +33,8 @@ class AuthController extends MviController<AuthIntent, AuthState> {
         _handleLogin(email, password);
       case LoginWithFacebookIntent():
         _handleFacebookLogin();
+      case LoginWithGoogleIntent():
+        _handleGoogleLogin();
       case ResetAuthErrorIntent():
         emit(value.copyWith(errorMessage: ''));
     }
@@ -84,6 +86,34 @@ class AuthController extends MviController<AuthIntent, AuthState> {
       emit(value.copyWith(
         isLoading: false,
         errorMessage: 'Facebook login failed: $e',
+        isSuccess: false,
+      ));
+    }
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    emit(value.copyWith(isLoading: true, errorMessage: '', isSuccess: false));
+    try {
+      final token = await _nativeAuthService.loginWithGoogle();
+      if (token != null) {
+        final user = User(id: 'google_user_id', email: 'google_user@example.com', name: 'Google User');
+        emit(value.copyWith(
+          isLoading: false,
+          user: user,
+          isSuccess: true,
+        ));
+      } else {
+        emit(value.copyWith(
+          isLoading: false,
+          errorMessage: 'Google login cancelled.',
+          isSuccess: false,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Error logging in with Google: $e');
+      emit(value.copyWith(
+        isLoading: false,
+        errorMessage: 'Google login failed: $e',
         isSuccess: false,
       ));
     }

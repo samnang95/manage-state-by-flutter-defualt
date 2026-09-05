@@ -35,6 +35,10 @@ target 'Runner' do
 
   # Facebook SDK
   pod 'FBSDKLoginKit', '~> 17.0.0'
+  
+  # Firebase & Google Sign-In
+  pod 'Firebase/Auth'
+  pod 'GoogleSignIn'
 end
 
 post_install do |installer|
