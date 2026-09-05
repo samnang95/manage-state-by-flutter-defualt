@@ -1,3 +1,9 @@
+// Auth
+import 'package:manage_state/presentation/auth/controllers/auth_controller.dart';
+import 'package:manage_state/domain/auth/usecases/login_usecase.dart';
+import 'package:manage_state/data/auth/repositories/auth_repository_impl.dart';
+import 'package:manage_state/data/auth/datasources/auth_remote_datasource.dart';
+
 // Home
 import 'package:manage_state/data/home/datasources/home_remote_datasource.dart';
 import 'package:manage_state/data/home/repositories/home_repository_impl.dart';
@@ -82,6 +88,17 @@ class DependencyInjector {
       return true;
     },
   );
+
+  // ==========================================
+  // Auth Feature
+  // ==========================================
+  late final AuthRemoteDataSource _authDataSource = AuthRemoteDataSourceImpl(apiClient);
+  late final _authRepository = AuthRepositoryImpl(_authDataSource);
+  late final _loginUseCase = LoginUseCase(_authRepository);
+
+  late final AuthController _authController = AuthController(loginUseCase: _loginUseCase);
+
+  AuthController getAuthController() => _authController;
 
   // ==========================================
   // Home Feature

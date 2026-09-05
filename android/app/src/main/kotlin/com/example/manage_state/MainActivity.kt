@@ -19,12 +19,20 @@ import io.flutter.view.TextureRegistry
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import com.facebook.CallbackManager
+import com.facebook.FacebookCallback
+import com.facebook.FacebookException
+import com.facebook.login.LoginManager
+import com.facebook.login.LoginResult
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.manage_state/camera"
     private val FILE_CHANNEL = "com.example.manage_state/file"
+    private val AUTH_CHANNEL = "com.example.manage_state/auth"
     private val CAMERA_REQUEST_CODE = 1001
     private val FILE_PICKER_REQUEST_CODE = 1002
+
+    private var callbackManager: CallbackManager? = null
 
     private var pendingResult: MethodChannel.Result? = null
     private var pendingFileResult: MethodChannel.Result? = null
@@ -78,6 +86,32 @@ class MainActivity: FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        callbackManager = CallbackManager.Factory.create()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUTH_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "loginWithFacebook") {
+                val permissions = call.argument<List<String>>("permissions") ?: listOf("public_profile")
+                
+                LoginManager.getInstance().registerCallback(callbackManager!!,
+                    object : FacebookCallback<LoginResult> {
+                        override fun onSuccess(loginResult: LoginResult) {
+                            result.success(loginResult.accessToken.token)
+                        }
+
+                        override fun onCancel() {
+                            result.error("CANCELLED", "Facebook login cancelled", null)
+                        }
+
+                        override fun onError(error: FacebookException) {
+                            result.error("ERROR", error.message, null)
+                        }
+                    })
+
+                LoginManager.getInstance().logInWithReadPermissions(this, permissions)
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -97,6 +131,7 @@ class MainActivity: FlutterActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        callbackManager?.onActivityResult(requestCode, resultCode, data)
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == FILE_PICKER_REQUEST_CODE) {
             if (resultCode == RESULT_OK && data != null) {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
-import 'package:manage_state/presentation/navi/pages/navi_page.dart';
+import 'package:manage_state/presentation/auth/pages/login_page.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
 
 void main() async {
@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Flutter Demo',
-        home: NaviPage(),
+        home: const LoginPage(),
       ),
     );
   }

@@ -11,3 +11,7 @@ class LoginIntent extends AuthIntent {
 class ResetAuthErrorIntent extends AuthIntent {
   const ResetAuthErrorIntent();
 }
+
+class LoginWithFacebookIntent extends AuthIntent {
+  const LoginWithFacebookIntent();
+}

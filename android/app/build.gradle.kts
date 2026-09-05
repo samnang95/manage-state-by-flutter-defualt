@@ -51,4 +51,7 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+    
+    // Facebook Login
+    implementation("com.facebook.android:facebook-login:16.0.1")
 }

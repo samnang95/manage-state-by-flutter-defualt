@@ -1,6 +1,8 @@
 import Flutter
 import UIKit
 import AVFoundation
+import FBSDKCoreKit
+import FBSDKLoginKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, UIDocumentPickerDelegate {
@@ -11,10 +13,17 @@ import AVFoundation
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    ApplicationDelegate.shared.application(
+        application,
+        didFinishLaunchingWithOptions: launchOptions
+    )
+
     let registrar = self.registrar(forPlugin: "com.example.manage_state")!
     let cameraChannel = FlutterMethodChannel(name: "com.example.manage_state/camera",
                                              binaryMessenger: registrar.messenger())
     let fileChannel = FlutterMethodChannel(name: "com.example.manage_state/file",
+                                           binaryMessenger: registrar.messenger())
+    let authChannel = FlutterMethodChannel(name: "com.example.manage_state/auth",
                                            binaryMessenger: registrar.messenger())
     
     cameraHandler = CameraStreamHandler(textureRegistry: registrar.textures())
@@ -87,7 +96,52 @@ import AVFoundation
       }
     })
 
+    authChannel.setMethodCallHandler({ [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+      if call.method == "loginWithFacebook" {
+        let args = call.arguments as? [String: Any]
+        let permissions = args?["permissions"] as? [String] ?? ["public_profile"]
+        
+        let loginManager = LoginManager()
+        var rootVC = self?.window?.rootViewController
+        if rootVC == nil {
+            rootVC = UIApplication.shared.windows.filter { $0.isKeyWindow }.first?.rootViewController
+        }
+        
+        loginManager.logIn(permissions: permissions, from: rootVC) { loginResult, error in
+            if let error = error {
+                result(FlutterError(code: "ERROR", message: error.localizedDescription, details: nil))
+            } else if let loginResult = loginResult, loginResult.isCancelled {
+                result(FlutterError(code: "CANCELLED", message: "Facebook login cancelled", details: nil))
+            } else if let token = loginResult?.token?.tokenString {
+                result(token)
+            } else {
+                result(FlutterError(code: "ERROR", message: "Unknown error", details: nil))
+            }
+        }
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    })
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func application(
+      _ app: UIApplication,
+      open url: URL,
+      options: [UIApplication.OpenURLOptionsKey : Any] = [:]
+  ) -> Bool {
+      let handled = ApplicationDelegate.shared.application(
+          app,
+          open: url,
+          sourceApplication: options[UIApplication.OpenURLOptionsKey.sourceApplication] as? String,
+          annotation: options[UIApplication.OpenURLOptionsKey.annotation]
+      )
+      
+      if (!handled) {
+          return super.application(app, open: url, options: options)
+      }
+      return handled
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {

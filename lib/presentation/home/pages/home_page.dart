@@ -60,21 +60,25 @@ class HomePage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Text(
-                            'facebook',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: -1.2,
+                          const Flexible(
+                            child: Text(
+                              'facebook',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 24, // reduced font size slightly
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: -1.2,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
                       actions: [
                         Padding(
-                          padding: const EdgeInsets.only(right: 24),
+                          padding: const EdgeInsets.only(right: 12),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               GestureDetector(
                                 child: const Icon(
@@ -83,7 +87,7 @@ class HomePage extends StatelessWidget {
                                 ),
                                 onTap: () {},
                               ),
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 12),
                               
                               // Camera feature 
                               GestureDetector(
@@ -98,7 +102,7 @@ class HomePage extends StatelessWidget {
                                   );
                                 },
                               ),
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 12),
                               
                               // Upload document feature
                               GestureDetector(
@@ -122,7 +126,7 @@ class HomePage extends StatelessWidget {
                                   }
                                 },
                               ),
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 12),
                               GestureDetector(
                                 child: const Icon(
                                   Icons.search,
@@ -130,7 +134,7 @@ class HomePage extends StatelessWidget {
                                 ),
                                 onTap: () {},
                               ),
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 12),
                               GestureDetector(
                                 child: const Icon(
                                   Icons.message_outlined,
