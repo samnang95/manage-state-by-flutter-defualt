@@ -35,6 +35,8 @@ class AuthController extends MviController<AuthIntent, AuthState> {
         _handleFacebookLogin();
       case LoginWithGoogleIntent():
         _handleGoogleLogin();
+      case LoginWithTikTokIntent():
+        _handleTikTokLogin();
       case ResetAuthErrorIntent():
         emit(value.copyWith(errorMessage: ''));
     }
@@ -114,6 +116,34 @@ class AuthController extends MviController<AuthIntent, AuthState> {
       emit(value.copyWith(
         isLoading: false,
         errorMessage: 'Google login failed: $e',
+        isSuccess: false,
+      ));
+    }
+  }
+
+  Future<void> _handleTikTokLogin() async {
+    emit(value.copyWith(isLoading: true, errorMessage: '', isSuccess: false));
+    try {
+      final token = await _nativeAuthService.loginWithTikTok();
+      if (token != null) {
+        final user = User(id: 'tiktok_user_id', email: 'tiktok_user@example.com', name: 'TikTok User');
+        emit(value.copyWith(
+          isLoading: false,
+          user: user,
+          isSuccess: true,
+        ));
+      } else {
+        emit(value.copyWith(
+          isLoading: false,
+          errorMessage: 'TikTok login cancelled.',
+          isSuccess: false,
+        ));
+      }
+    } catch (e) {
+      debugPrint('Error logging in with TikTok: $e');
+      emit(value.copyWith(
+        isLoading: false,
+        errorMessage: 'TikTok login failed: $e',
         isSuccess: false,
       ));
     }

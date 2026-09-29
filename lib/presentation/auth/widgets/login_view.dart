@@ -134,6 +134,27 @@ class LoginView extends StatelessWidget {
               );
             },
           ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<AuthState>(
+            valueListenable: controller,
+            builder: (context, state, _) {
+              return OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Colors.black87),
+                  foregroundColor: Colors.black87,
+                ),
+                icon: const Icon(Icons.music_note, size: 28),
+                label: const Text('Continue with TikTok', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                onPressed: state.isLoading
+                    ? null
+                    : () {
+                        FocusScope.of(context).unfocus();
+                        controller.onIntent(const LoginWithTikTokIntent());
+                      },
+              );
+            },
+          ),
         ],
       ),
     );

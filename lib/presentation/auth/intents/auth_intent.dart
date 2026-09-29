@@ -19,3 +19,7 @@ class LoginWithFacebookIntent extends AuthIntent {
 class LoginWithGoogleIntent extends AuthIntent {
   const LoginWithGoogleIntent();
 }
+
+class LoginWithTikTokIntent extends AuthIntent {
+  const LoginWithTikTokIntent();
+}
