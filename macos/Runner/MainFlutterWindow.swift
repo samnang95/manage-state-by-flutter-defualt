@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import AVFoundation
+import CoreImage
 
 class MainFlutterWindow: NSWindow {
   private var cameraHandler: CameraStreamHandler?
@@ -51,9 +52,105 @@ class MainFlutterWindow: NSWindow {
       } else if call.method == "toggleMirror" {
         let isMirrored = self?.cameraHandler?.toggleMirror() ?? false
         result(isMirrored)
+      } else if call.method == "takePhoto" {
+        if let photoData = self?.cameraHandler?.takePhoto() {
+          result(photoData)
+        } else {
+          result(FlutterError(code: "CAPTURE_ERROR", message: "Failed to capture photo frame", details: nil))
+        }
+      } else if call.method == "resumeCamera" {
+        self?.cameraHandler?.resumeCamera()
+        result(nil)
       } else if call.method == "stopCamera" {
         self?.cameraHandler?.stopCamera()
         result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    })
+
+    let fileChannel = FlutterMethodChannel(
+      name: "com.example.manage_state/file",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    fileChannel.setMethodCallHandler({ (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+      if call.method == "saveImageBytes" {
+        guard let args = call.arguments as? [String: Any],
+              let fileName = args["fileName"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+          return
+        }
+        let data: Data
+        if let typedData = args["bytes"] as? FlutterStandardTypedData {
+          data = typedData.data
+        } else if let rawData = args["bytes"] as? Data {
+          data = rawData
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing or invalid bytes", details: nil))
+          return
+        }
+        let fileManager = FileManager.default
+        let candidates: [FileManager.SearchPathDirectory] = [.picturesDirectory, .downloadsDirectory, .documentDirectory]
+        var savedPath: String?
+        var lastError: Error?
+
+        for dir in candidates {
+          if let dirUrl = try? fileManager.url(for: dir, in: .userDomainMask, appropriateFor: nil, create: true) {
+            let fileUrl = dirUrl.appendingPathComponent(fileName)
+            do {
+              try data.write(to: fileUrl, options: .atomic)
+              savedPath = fileUrl.path
+              break
+            } catch {
+              lastError = error
+            }
+          }
+        }
+
+        if let path = savedPath {
+          result(path)
+        } else {
+          result(FlutterError(code: "FILE_ERROR", message: "Failed to save image: \(lastError?.localizedDescription ?? "Unknown error")", details: nil))
+        }
+      } else if call.method == "revealInFinder" {
+        guard let args = call.arguments as? [String: Any],
+              let filePath = args["path"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing path", details: nil))
+          return
+        }
+        let url = URL(fileURLWithPath: filePath)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        result(true)
+      } else if call.method == "saveFile" {
+        guard let args = call.arguments as? [String: Any],
+              let tempPath = args["tempPath"] as? String,
+              let fileName = args["fileName"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+          return
+        }
+        let fileManager = FileManager.default
+        let tempUrl = URL(fileURLWithPath: tempPath)
+        do {
+          let documentDirectory = try fileManager.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+          let permanentUrl = documentDirectory.appendingPathComponent(fileName)
+          if fileManager.fileExists(atPath: permanentUrl.path) {
+            try fileManager.removeItem(at: permanentUrl)
+          }
+          try fileManager.copyItem(at: tempUrl, to: permanentUrl)
+          result(permanentUrl.path)
+        } catch {
+          result(FlutterError(code: "FILE_ERROR", message: "Failed to save file: \(error.localizedDescription)", details: nil))
+        }
+      } else if call.method == "pickFile" {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+          result(url.path)
+        } else {
+          result(nil)
+        }
       } else {
         result(FlutterMethodNotImplemented)
       }
@@ -71,6 +168,8 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
   private var latestPixelBuffer: CVPixelBuffer?
   private var currentDeviceIndex = 0
   var isMirrorEnabled: Bool = true
+  private var isConnectionMirrored: Bool = false
+  private let bufferLock = NSLock()
 
   init(textureRegistry: FlutterTextureRegistry) {
     self.textureRegistry = textureRegistry
@@ -78,8 +177,15 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
   }
 
   private var availableDevices: [AVCaptureDevice] {
+    var deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera]
+    if #available(macOS 14.0, *) {
+      deviceTypes.append(.external)
+      deviceTypes.append(.continuityCamera)
+    } else {
+      deviceTypes.append(.externalUnknown)
+    }
     let discoverySession = AVCaptureDevice.DiscoverySession(
-      deviceTypes: [.builtInWideAngleCamera, .externalUnknown],
+      deviceTypes: deviceTypes,
       mediaType: .video,
       position: .unspecified
     )
@@ -95,7 +201,9 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     captureSession = session
 
     session.beginConfiguration()
-    if session.canSetSessionPreset(.vga640x480) {
+    if session.canSetSessionPreset(.hd1280x720) {
+      session.sessionPreset = .hd1280x720
+    } else if session.canSetSessionPreset(.vga640x480) {
       session.sessionPreset = .vga640x480
     } else if session.canSetSessionPreset(.medium) {
       session.sessionPreset = .medium
@@ -120,6 +228,9 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
       if connection.isVideoMirroringSupported {
         connection.automaticallyAdjustsVideoMirroring = false
         connection.isVideoMirrored = isMirrorEnabled
+        isConnectionMirrored = isMirrorEnabled
+      } else {
+        isConnectionMirrored = false
       }
     }
 
@@ -192,6 +303,17 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     if connection.isVideoMirroringSupported {
       connection.automaticallyAdjustsVideoMirroring = false
       connection.isVideoMirrored = isMirrorEnabled
+      isConnectionMirrored = isMirrorEnabled
+    } else {
+      isConnectionMirrored = false
+    }
+  }
+
+  func resumeCamera() {
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      if let session = self?.captureSession, !session.isRunning {
+        session.startRunning()
+      }
     }
   }
 
@@ -213,7 +335,9 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
       textureRegistry?.unregisterTexture(id)
       textureId = nil
     }
+    bufferLock.lock()
     latestPixelBuffer = nil
+    bufferLock.unlock()
   }
 
   // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
@@ -224,7 +348,9 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
   ) {
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
+    bufferLock.lock()
     latestPixelBuffer = pixelBuffer
+    bufferLock.unlock()
 
     if let id = textureId {
       textureRegistry?.textureFrameAvailable(id)
@@ -233,9 +359,37 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
 
   // MARK: - FlutterTexture
   func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
+    bufferLock.lock()
+    defer { bufferLock.unlock() }
     if let buffer = latestPixelBuffer {
       return Unmanaged.passRetained(buffer)
     }
     return nil
+  }
+
+  func takePhoto() -> FlutterStandardTypedData? {
+    bufferLock.lock()
+    let buffer = latestPixelBuffer
+    bufferLock.unlock()
+
+    guard let buffer = buffer else { return nil }
+    var ciImage = CIImage(cvPixelBuffer: buffer)
+    if isMirrorEnabled && !isConnectionMirrored {
+      ciImage = ciImage.transformed(by: CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -ciImage.extent.width, y: 0))
+    }
+    let context = CIContext(options: nil)
+    guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+          let jpegData = context.jpegRepresentation(of: ciImage, colorSpace: colorSpace, options: [:]) else {
+      return nil
+    }
+
+    // Clean hardware shutdown: Stop the capture session so the webcam and LED indicator turn off immediately
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      if let session = self?.captureSession, session.isRunning {
+        session.stopRunning()
+      }
+    }
+
+    return FlutterStandardTypedData(bytes: jpegData)
   }
 }

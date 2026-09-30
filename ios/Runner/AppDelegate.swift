@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import AVFoundation
+import CoreImage
 import FBSDKCoreKit
 import FBSDKLoginKit
 import FirebaseCore
@@ -34,10 +35,29 @@ import GoogleSignIn
     
     cameraChannel.setMethodCallHandler({ [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
       if call.method == "startCamera" {
-        if let textureId = self?.cameraHandler?.startCamera() {
-          result(textureId)
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .notDetermined {
+          AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+              if granted {
+                if let textureId = self?.cameraHandler?.startCamera() {
+                  result(textureId)
+                } else {
+                  result(FlutterError(code: "CAMERA_ERROR", message: "Failed to start camera", details: nil))
+                }
+              } else {
+                result(FlutterError(code: "PERMISSION_DENIED", message: "Camera permission denied", details: nil))
+              }
+            }
+          }
+        } else if status == .authorized {
+          if let textureId = self?.cameraHandler?.startCamera() {
+            result(textureId)
+          } else {
+            result(FlutterError(code: "CAMERA_ERROR", message: "Failed to start camera", details: nil))
+          }
         } else {
-          result(FlutterError(code: "CAMERA_ERROR", message: "Failed to start camera", details: nil))
+          result(FlutterError(code: "PERMISSION_DENIED", message: "Camera permission not granted", details: nil))
         }
       } else if call.method == "switchCamera" {
         self?.cameraHandler?.switchCamera()
@@ -45,6 +65,15 @@ import GoogleSignIn
       } else if call.method == "toggleMirror" {
         let isMirrored = self?.cameraHandler?.toggleMirror() ?? false
         result(isMirrored)
+      } else if call.method == "takePhoto" {
+        if let photoData = self?.cameraHandler?.takePhoto() {
+          result(photoData)
+        } else {
+          result(FlutterError(code: "CAPTURE_ERROR", message: "Failed to capture photo frame", details: nil))
+        }
+      } else if call.method == "resumeCamera" {
+        self?.cameraHandler?.resumeCamera()
+        result(nil)
       } else if call.method == "stopCamera" {
         self?.cameraHandler?.stopCamera()
         result(nil)
@@ -100,6 +129,30 @@ import GoogleSignIn
             result(permanentUrl.path)
         } catch {
             result(FlutterError(code: "FILE_ERROR", message: "Failed to save file", details: error.localizedDescription))
+        }
+      } else if call.method == "saveImageBytes" {
+        guard let args = call.arguments as? [String: Any],
+              let fileName = args["fileName"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+          return
+        }
+        let data: Data
+        if let typedData = args["bytes"] as? FlutterStandardTypedData {
+          data = typedData.data
+        } else if let rawData = args["bytes"] as? Data {
+          data = rawData
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing or invalid bytes", details: nil))
+          return
+        }
+        let fileManager = FileManager.default
+        do {
+            let documentDirectory = try fileManager.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let permanentUrl = documentDirectory.appendingPathComponent(fileName)
+            try data.write(to: permanentUrl, options: .atomic)
+            result(permanentUrl.path)
+        } catch {
+            result(FlutterError(code: "FILE_ERROR", message: "Failed to save image", details: error.localizedDescription))
         }
       } else {
         result(FlutterMethodNotImplemented)
@@ -235,6 +288,7 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     private var latestPixelBuffer: CVPixelBuffer?
     private var textureRegistry: FlutterTextureRegistry?
     private var textureId: Int64?
+    private let bufferLock = NSLock()
     
     private var isFrontCamera = true
     var isMirrorEnabled: Bool = true
@@ -245,23 +299,21 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     }
     
     func startCamera() -> Int64? {
-        // Request permissions
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        if status == .notDetermined {
-            let semaphore = DispatchSemaphore(value: 0)
-            AVCaptureDevice.requestAccess(for: .video) { _ in
-                semaphore.signal()
-            }
-            semaphore.wait()
-        } else if status != .authorized {
-            return nil
+        if let id = textureId {
+            return id
         }
         
-        captureSession = AVCaptureSession()
-        guard let session = captureSession else { return nil }
+        let session = AVCaptureSession()
+        captureSession = session
         
         session.beginConfiguration()
-        session.sessionPreset = .vga640x480
+        if session.canSetSessionPreset(.hd1280x720) {
+            session.sessionPreset = .hd1280x720
+        } else if session.canSetSessionPreset(.vga640x480) {
+            session.sessionPreset = .vga640x480
+        } else if session.canSetSessionPreset(.medium) {
+            session.sessionPreset = .medium
+        }
         
         setupCameraInput(session: session)
         
@@ -271,7 +323,7 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
         ]
         
-        let queue = DispatchQueue(label: "camera_frame_queue")
+        let queue = DispatchQueue(label: "camera_frame_queue_ios")
         videoOutput.setSampleBufferDelegate(self, queue: queue)
         
         if session.canAddOutput(videoOutput) {
@@ -291,7 +343,7 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
         
         session.commitConfiguration()
         
-        DispatchQueue.global(qos: .background).async {
+        DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
         }
         
@@ -306,6 +358,7 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     private func setupCameraInput(session: AVCaptureSession) {
         if let current = currentInput {
             session.removeInput(current)
+            currentInput = nil
         }
         
         let position: AVCaptureDevice.Position = isFrontCamera ? .front : .back
@@ -318,7 +371,7 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
                 currentInput = input
             }
         } catch {
-            print("Failed to set camera input: \(error)")
+            print("Failed to set camera input on iOS: \(error)")
         }
     }
     
@@ -352,6 +405,14 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
         }
     }
 
+    func resumeCamera() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            if let session = self?.captureSession, !session.isRunning {
+                session.startRunning()
+            }
+        }
+    }
+
     func stopCamera() {
         if let session = captureSession {
             if session.isRunning {
@@ -370,14 +431,18 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
             textureRegistry?.unregisterTexture(id)
             textureId = nil
         }
+        bufferLock.lock()
         latestPixelBuffer = nil
+        bufferLock.unlock()
     }
     
     // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
+        bufferLock.lock()
         latestPixelBuffer = pixelBuffer
+        bufferLock.unlock()
         
         if let id = textureId {
             textureRegistry?.textureFrameAvailable(id)
@@ -386,9 +451,35 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     
     // MARK: - FlutterTexture
     func copyPixelBuffer() -> Unmanaged<CVPixelBuffer>? {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
         if let buffer = latestPixelBuffer {
             return Unmanaged.passRetained(buffer)
         }
         return nil
+    }
+
+    func takePhoto() -> FlutterStandardTypedData? {
+        bufferLock.lock()
+        let buffer = latestPixelBuffer
+        bufferLock.unlock()
+
+        guard let buffer = buffer else { return nil }
+        var ciImage = CIImage(cvPixelBuffer: buffer)
+        
+        let context = CIContext(options: nil)
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let jpegData = context.jpegRepresentation(of: ciImage, colorSpace: colorSpace, options: [:]) else {
+            return nil
+        }
+
+        // Clean hardware shutdown: Stop the capture session so camera and privacy indicator turn off immediately
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            if let session = self?.captureSession, session.isRunning {
+                session.stopRunning()
+            }
+        }
+
+        return FlutterStandardTypedData(bytes: jpegData)
     }
 }

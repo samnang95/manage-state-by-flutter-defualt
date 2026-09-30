@@ -1,17 +1,29 @@
 package com.example.manage_state
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -51,6 +63,7 @@ class MainActivity: FlutterActivity() {
     private var isMirrorEnabled = true
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
+    private var imageCapture: ImageCapture? = null
     private var currentTextureEntry: TextureRegistry.SurfaceTextureEntry? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -72,6 +85,11 @@ class MainActivity: FlutterActivity() {
             } else if (call.method == "toggleMirror") {
                 isMirrorEnabled = !isMirrorEnabled
                 result.success(isMirrorEnabled)
+            } else if (call.method == "takePhoto") {
+                takePhoto(result)
+            } else if (call.method == "resumeCamera") {
+                resumeCameraFeed()
+                result.success(null)
             } else if (call.method == "stopCamera") {
                 stopCameraFeed()
                 result.success(null)
@@ -97,6 +115,42 @@ class MainActivity: FlutterActivity() {
                         result.success(permFile.absolutePath)
                     } catch (e: Exception) {
                         result.error("FILE_ERROR", "Failed to copy file", e.message)
+                    }
+                } else {
+                    result.error("INVALID_ARGS", "Missing arguments", null)
+                }
+            } else if (call.method == "saveImageBytes") {
+                val bytes = call.argument<ByteArray>("bytes")
+                val fileName = call.argument<String>("fileName")
+                if (bytes != null && fileName != null) {
+                    try {
+                        val dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: filesDir
+                        val permFile = File(dir, fileName)
+                        FileOutputStream(permFile).use { it.write(bytes) }
+
+                        // Also save to MediaStore so user can see it in Photos/Gallery
+                        try {
+                            val contentValues = ContentValues().apply {
+                                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                                }
+                            }
+                            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                            if (uri != null) {
+                                contentResolver.openOutputStream(uri)?.use { output ->
+                                    output.write(bytes)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w("NativeFile", "Failed to insert into MediaStore", e)
+                        }
+
+                        result.success(permFile.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("FILE_ERROR", "Failed to save image", e.message)
                     }
                 } else {
                     result.error("INVALID_ARGS", "Missing arguments", null)
@@ -275,14 +329,79 @@ class MainActivity: FlutterActivity() {
             CameraSelector.DEFAULT_BACK_CAMERA
         }
 
+        val capture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .build()
+        imageCapture = capture
+
         provider.unbindAll()
-        provider.bindToLifecycle(this, cameraSelector, currentPreview)
+        provider.bindToLifecycle(this, cameraSelector, currentPreview, capture)
+    }
+
+    private fun takePhoto(result: MethodChannel.Result) {
+        val capture = imageCapture
+        if (capture == null) {
+            result.error("CAMERA_ERROR", "Camera is not ready", null)
+            return
+        }
+
+        capture.takePicture(
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    try {
+                        val buffer: ByteBuffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+                        val rotationDegrees = image.imageInfo.rotationDegrees
+                        val matrix = Matrix()
+                        if (rotationDegrees != 0) {
+                            matrix.postRotate(rotationDegrees.toFloat())
+                        }
+                        if (isMirrorEnabled) {
+                            matrix.postScale(-1f, 1f)
+                        }
+
+                        if (rotationDegrees != 0 || isMirrorEnabled) {
+                            val transformedBitmap = Bitmap.createBitmap(
+                                bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                            )
+                            bitmap = transformedBitmap
+                        }
+
+                        val stream = ByteArrayOutputStream()
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 92, stream)
+                        val outputBytes = stream.toByteArray()
+
+                        // Clean hardware shutdown: Stop camera provider immediately upon photo capture!
+                        cameraProvider?.unbindAll()
+
+                        result.success(outputBytes)
+                    } catch (e: Exception) {
+                        result.error("CAPTURE_ERROR", "Failed to process photo: ${e.message}", null)
+                    } finally {
+                        image.close()
+                    }
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    result.error("CAPTURE_ERROR", "Capture failed: ${exception.message}", null)
+                }
+            }
+        )
+    }
+
+    private fun resumeCameraFeed() {
+        bindCamera()
     }
 
     private fun stopCameraFeed() {
         try {
             cameraProvider?.unbindAll()
             preview = null
+            imageCapture = null
             currentTextureEntry?.release()
             currentTextureEntry = null
         } catch (e: Exception) {

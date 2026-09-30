@@ -37,6 +37,26 @@ class NativeCameraService {
     }
   }
 
+  Future<Uint8List?> takePhoto() async {
+    if (kIsWeb) return null;
+    try {
+      final Uint8List? bytes = await _channel.invokeMethod<Uint8List>('takePhoto');
+      return bytes;
+    } catch (e) {
+      debugPrint("Failed to take photo: '$e'.");
+      return null;
+    }
+  }
+
+  Future<void> resumeCamera() async {
+    if (kIsWeb) return;
+    try {
+      await _channel.invokeMethod('resumeCamera');
+    } catch (e) {
+      debugPrint("Failed to resume camera: '$e'.");
+    }
+  }
+
   Future<void> stopCamera() async {
     if (kIsWeb) return;
     try {

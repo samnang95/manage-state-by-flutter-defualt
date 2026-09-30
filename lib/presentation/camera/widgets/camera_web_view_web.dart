@@ -1,13 +1,16 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:typed_data';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'camera_web_view_stub.dart';
+export 'camera_web_view_stub.dart' show WebCameraController;
 
 Widget createWebCameraView({Key? key, dynamic controllerKey}) {
   return WebCameraPreview(
-    key: controllerKey is GlobalKey<WebCameraPreviewState> ? controllerKey : null,
+    key: (controllerKey is Key) ? controllerKey : key,
   );
 }
 
@@ -65,8 +68,18 @@ class WebCameraPreviewState extends State<WebCameraPreview> implements WebCamera
       };
 
       final stream = await html.window.navigator.mediaDevices?.getUserMedia(constraints);
+      if (!mounted) {
+        if (stream != null) {
+          for (final track in stream.getTracks()) {
+            track.stop();
+          }
+        }
+        return;
+      }
       if (stream != null) {
         _stream = stream;
+        _globalWebStream = stream;
+        _globalVideoElement = _videoElement;
         _videoElement?.srcObject = stream;
         _applyMirror();
 
@@ -112,11 +125,62 @@ class WebCameraPreviewState extends State<WebCameraPreview> implements WebCamera
     _initCamera();
   }
 
-  void _stopStream() {
-    if (_stream != null) {
-      for (final track in _stream!.getTracks()) {
-        track.stop();
+  @override
+  Future<Uint8List?> takePhoto() async {
+    try {
+      if (_videoElement == null) {
+        debugPrint('takePhoto error: _videoElement is null');
+        return null;
       }
+      final width = _videoElement!.videoWidth > 0
+          ? _videoElement!.videoWidth
+          : (_videoElement!.clientWidth > 0 ? _videoElement!.clientWidth : 640);
+      final height = _videoElement!.videoHeight > 0
+          ? _videoElement!.videoHeight
+          : (_videoElement!.clientHeight > 0 ? _videoElement!.clientHeight : 480);
+
+      final canvas = html.CanvasElement(width: width, height: height);
+      final ctx = canvas.context2D;
+      if (_isMirrored) {
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(_videoElement!, 0, 0);
+      final dataUrl = canvas.toDataUrl('image/jpeg', 0.92);
+      final commaIndex = dataUrl.indexOf(',');
+      if (commaIndex != -1) {
+        final base64String = dataUrl.substring(commaIndex + 1);
+        final bytes = base64Decode(base64String);
+        // Turn off camera hardware immediately after photo capture!
+        _stopStream();
+        return bytes;
+      }
+      return null;
+    } catch (e, stack) {
+      debugPrint('takePhoto exception: $e\n$stack');
+      return null;
+    }
+  }
+
+  @override
+  void savePhotoLocally(Uint8List bytes, String filename) {
+    saveWebPhotoLocally(bytes, filename);
+  }
+
+  void _stopStream() {
+    stopWebCamera();
+    if (_videoElement != null) {
+      try {
+        _videoElement!.pause();
+        _videoElement!.srcObject = null;
+      } catch (_) {}
+    }
+    if (_stream != null) {
+      try {
+        for (final track in _stream!.getTracks()) {
+          track.stop();
+        }
+      } catch (_) {}
       _stream = null;
     }
   }
@@ -157,5 +221,40 @@ class WebCameraPreviewState extends State<WebCameraPreview> implements WebCamera
       );
     }
     return HtmlElementView(viewType: _viewType);
+  }
+}
+
+void saveWebPhotoLocally(Uint8List bytes, String filename) {
+  final blob = html.Blob([bytes], 'image/jpeg');
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  final anchor = html.AnchorElement(href: url)
+    ..download = filename
+    ..style.display = 'none';
+  html.document.body?.append(anchor);
+  anchor.click();
+  Future.delayed(const Duration(seconds: 2), () {
+    anchor.remove();
+    html.Url.revokeObjectUrl(url);
+  });
+}
+
+html.MediaStream? _globalWebStream;
+html.VideoElement? _globalVideoElement;
+
+void stopWebCamera() {
+  if (_globalVideoElement != null) {
+    try {
+      _globalVideoElement!.pause();
+      _globalVideoElement!.srcObject = null;
+    } catch (_) {}
+    _globalVideoElement = null;
+  }
+  if (_globalWebStream != null) {
+    try {
+      for (final track in _globalWebStream!.getTracks()) {
+        track.stop();
+      }
+    } catch (_) {}
+    _globalWebStream = null;
   }
 }

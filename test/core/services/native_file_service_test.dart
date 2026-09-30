@@ -47,6 +47,19 @@ void main() {
       expect(result, isNull);
     });
 
+    test('saveImageBytes returns saved path on success', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        if (methodCall.method == 'saveImageBytes') {
+          return '/path/to/mock/photo.jpg';
+        }
+        return null;
+      });
+
+      final result = await service.saveImageBytes(Uint8List(4), 'photo.jpg');
+      expect(result, '/path/to/mock/photo.jpg');
+    });
+
     tearDown(() {
       // Clear the mock handler after tests
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

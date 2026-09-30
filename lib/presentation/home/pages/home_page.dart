@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:manage_state/core/utils/app_colors.dart';
 import 'package:manage_state/core/di/dependency_injector.dart';
@@ -95,11 +96,83 @@ class HomePage extends StatelessWidget {
                                   Icons.camera_alt_outlined,
                                   color: AppColors.black,
                                 ),
-                                onTap: () {
-                                  Navigator.push(
+                                onTap: () async {
+                                  final result = await Navigator.push(
                                     context,
-                                    MaterialPageRoute(builder: (_) => NativeCameraPage()),
+                                    MaterialPageRoute(builder: (_) => const NativeCameraPage()),
                                   );
+                                  if (result != null && context.mounted) {
+                                    String? path;
+                                    Uint8List? bytes;
+                                    if (result is Map) {
+                                      path = result['path'] as String?;
+                                      bytes = result['bytes'] as Uint8List?;
+                                    } else if (result is String) {
+                                      path = result;
+                                    }
+
+                                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        behavior: SnackBarBehavior.floating,
+                                        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                        backgroundColor: Colors.white,
+                                        elevation: 6,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        duration: const Duration(seconds: 4),
+                                        content: Row(
+                                          children: [
+                                            if (bytes != null)
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Image.memory(
+                                                  bytes,
+                                                  width: 48,
+                                                  height: 48,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  const Text(
+                                                    'Photo Saved Successfully',
+                                                    style: TextStyle(
+                                                      color: Colors.black,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    path ?? '',
+                                                    style: const TextStyle(
+                                                      color: Colors.black54,
+                                                      fontSize: 12,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        action: (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS && path != null)
+                                            ? SnackBarAction(
+                                                label: 'Show in Finder',
+                                                textColor: AppColors.primary,
+                                                onPressed: () {
+                                                  NativeFileService().revealInFinder(path!);
+                                                },
+                                              )
+                                            : null,
+                                      ),
+                                    );
+                                  }
                                 },
                               ),
                               const SizedBox(width: 12),

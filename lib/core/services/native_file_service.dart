@@ -26,4 +26,30 @@ class NativeFileService {
       return null;
     }
   }
+
+  Future<String?> saveImageBytes(Uint8List bytes, String fileName) async {
+    try {
+      final String? permanentPath = await _channel.invokeMethod('saveImageBytes', {
+        'bytes': bytes,
+        'fileName': fileName,
+      });
+      return permanentPath;
+    } on PlatformException catch (e) {
+      debugPrint("Failed to save image bytes: '${e.message}'.");
+      return null;
+    }
+  }
+
+  Future<bool> revealInFinder(String filePath) async {
+    if (kIsWeb) return false;
+    try {
+      final bool? success = await _channel.invokeMethod<bool>('revealInFinder', {
+        'path': filePath,
+      });
+      return success ?? false;
+    } on PlatformException catch (e) {
+      debugPrint("Failed to reveal file: '${e.message}'.");
+      return false;
+    }
+  }
 }
