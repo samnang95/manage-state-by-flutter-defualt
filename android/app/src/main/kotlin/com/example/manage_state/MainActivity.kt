@@ -47,9 +47,11 @@ class MainActivity: FlutterActivity() {
     private var pendingFileResult: MethodChannel.Result? = null
     private var pendingGoogleResult: MethodChannel.Result? = null
 
-    private var isFrontCamera = false
+    private var isFrontCamera = true
+    private var isMirrorEnabled = true
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
+    private var currentTextureEntry: TextureRegistry.SurfaceTextureEntry? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -64,7 +66,14 @@ class MainActivity: FlutterActivity() {
                 }
             } else if (call.method == "switchCamera") {
                 isFrontCamera = !isFrontCamera
+                isMirrorEnabled = isFrontCamera
                 bindCamera()
+                result.success(isMirrorEnabled)
+            } else if (call.method == "toggleMirror") {
+                isMirrorEnabled = !isMirrorEnabled
+                result.success(isMirrorEnabled)
+            } else if (call.method == "stopCamera") {
+                stopCameraFeed()
                 result.success(null)
             } else {
                 result.notImplemented()
@@ -231,7 +240,9 @@ class MainActivity: FlutterActivity() {
                 cameraProvider = cameraProviderFuture.get()
 
                 // Create a Flutter Texture
+                currentTextureEntry?.release()
                 val textureEntry: TextureRegistry.SurfaceTextureEntry = flutterEngine.renderer.createSurfaceTexture()
+                currentTextureEntry = textureEntry
                 val surfaceTexture: SurfaceTexture = textureEntry.surfaceTexture()
 
                 preview = Preview.Builder().build().also {
@@ -266,5 +277,21 @@ class MainActivity: FlutterActivity() {
 
         provider.unbindAll()
         provider.bindToLifecycle(this, cameraSelector, currentPreview)
+    }
+
+    private fun stopCameraFeed() {
+        try {
+            cameraProvider?.unbindAll()
+            preview = null
+            currentTextureEntry?.release()
+            currentTextureEntry = null
+        } catch (e: Exception) {
+            Log.e("NativeCamera", "Failed to stop camera feed", e)
+        }
+    }
+
+    override fun onDestroy() {
+        stopCameraFeed()
+        super.onDestroy()
     }
 }

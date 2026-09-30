@@ -5,20 +5,44 @@ class NativeCameraService {
   static const MethodChannel _channel = MethodChannel('com.example.manage_state/camera');
 
   Future<int?> startCamera() async {
+    if (kIsWeb) return null;
     try {
-      final int textureId = await _channel.invokeMethod('startCamera');
+      final int? textureId = await _channel.invokeMethod<int>('startCamera');
       return textureId;
-    } on PlatformException catch (e) {
-      debugPrint("Failed to start camera: '${e.message}'.");
+    } catch (e) {
+      debugPrint("Failed to start camera: '$e'.");
       return null;
     }
   }
 
-  Future<void> switchCamera() async {
+  Future<bool?> switchCamera() async {
+    if (kIsWeb) return null;
     try {
-      await _channel.invokeMethod('switchCamera');
-    } on PlatformException catch (e) {
-      debugPrint("Failed to switch camera: '${e.message}'.");
+      final bool? isMirrored = await _channel.invokeMethod<bool>('switchCamera');
+      return isMirrored;
+    } catch (e) {
+      debugPrint("Failed to switch camera: '$e'.");
+      return null;
+    }
+  }
+
+  Future<bool?> toggleMirror() async {
+    if (kIsWeb) return null;
+    try {
+      final bool? isMirrored = await _channel.invokeMethod<bool>('toggleMirror');
+      return isMirrored;
+    } catch (e) {
+      debugPrint("Failed to toggle mirror: '$e'.");
+      return null;
+    }
+  }
+
+  Future<void> stopCamera() async {
+    if (kIsWeb) return;
+    try {
+      await _channel.invokeMethod('stopCamera');
+    } catch (e) {
+      debugPrint("Failed to stop camera: '$e'.");
     }
   }
 }

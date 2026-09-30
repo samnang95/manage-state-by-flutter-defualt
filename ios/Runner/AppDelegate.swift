@@ -41,6 +41,12 @@ import GoogleSignIn
         }
       } else if call.method == "switchCamera" {
         self?.cameraHandler?.switchCamera()
+        result(self?.cameraHandler?.isMirrorEnabled)
+      } else if call.method == "toggleMirror" {
+        let isMirrored = self?.cameraHandler?.toggleMirror() ?? false
+        result(isMirrored)
+      } else if call.method == "stopCamera" {
+        self?.cameraHandler?.stopCamera()
         result(nil)
       } else {
         result(FlutterMethodNotImplemented)
@@ -230,7 +236,8 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     private var textureRegistry: FlutterTextureRegistry?
     private var textureId: Int64?
     
-    private var isFrontCamera = false
+    private var isFrontCamera = true
+    var isMirrorEnabled: Bool = true
     
     init(textureRegistry: FlutterTextureRegistry) {
         self.textureRegistry = textureRegistry
@@ -271,10 +278,14 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
             session.addOutput(videoOutput)
         }
         
-        // Ensure proper orientation
+        // Ensure proper orientation and mirroring
         if let connection = videoOutput.connection(with: .video) {
             if connection.isVideoOrientationSupported {
                 connection.videoOrientation = .portrait
+            }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = isMirrorEnabled
             }
         }
         
@@ -314,21 +325,52 @@ class CameraStreamHandler: NSObject, FlutterTexture, AVCaptureVideoDataOutputSam
     func switchCamera() {
         guard let session = captureSession else { return }
         isFrontCamera = !isFrontCamera
+        isMirrorEnabled = isFrontCamera
         
         session.beginConfiguration()
         setupCameraInput(session: session)
-        
-        if let output = session.outputs.first as? AVCaptureVideoDataOutput,
-           let connection = output.connection(with: .video) {
-            if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
-            }
-            if connection.isVideoMirroringSupported {
-                connection.isVideoMirrored = isFrontCamera
-            }
-        }
-        
+        updateMirroring()
         session.commitConfiguration()
+    }
+
+    func toggleMirror() -> Bool {
+        isMirrorEnabled = !isMirrorEnabled
+        updateMirroring()
+        return isMirrorEnabled
+    }
+
+    private func updateMirroring() {
+        guard let session = captureSession,
+              let output = session.outputs.first as? AVCaptureVideoDataOutput,
+              let connection = output.connection(with: .video) else { return }
+        if connection.isVideoOrientationSupported {
+            connection.videoOrientation = .portrait
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = isMirrorEnabled
+        }
+    }
+
+    func stopCamera() {
+        if let session = captureSession {
+            if session.isRunning {
+                session.stopRunning()
+            }
+            for input in session.inputs {
+                session.removeInput(input)
+            }
+            for output in session.outputs {
+                session.removeOutput(output)
+            }
+            captureSession = nil
+        }
+        currentInput = nil
+        if let id = textureId {
+            textureRegistry?.unregisterTexture(id)
+            textureId = nil
+        }
+        latestPixelBuffer = nil
     }
     
     // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'token_manager.dart';
 
 /// ===============================================================
@@ -43,13 +43,13 @@ class NetworkException implements Exception {
 
 /// ===============================================================
 /// API Client
-/// Built with dart:io HttpClient
+/// Built with cross-platform package:http Client
 /// ===============================================================
 class ApiClient {
   final String baseUrl;
   final Duration timeout;
 
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   /// Manages access/refresh tokens.
   final TokenManager? tokenManager;
@@ -72,9 +72,8 @@ class ApiClient {
     this.timeout = const Duration(seconds: 15),
     this.tokenManager,
     this.onRefreshToken,
-  }) : _httpClient = HttpClient() {
-    _httpClient.connectionTimeout = timeout;
-  }
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   // ===============================================================
   // GET
@@ -167,9 +166,10 @@ class ApiClient {
 
   Future<dynamic> uploadFile(
     String endpoint,
-    File file,
+    dynamic file,
     String fieldName, {
     Map<String, String>? headers,
+    String? filename,
   }) async {
     try {
       if (_refreshCompleter != null) {
@@ -180,38 +180,54 @@ class ApiClient {
       }
 
       final uri = _buildUri(endpoint, null);
-      final request = await _httpClient.openUrl('POST', uri).timeout(timeout);
-
-      final boundary = '----Boundary${DateTime.now().millisecondsSinceEpoch}';
-      
-      request.headers.set(
-        HttpHeaders.contentTypeHeader,
-        'multipart/form-data; boundary=$boundary',
-      );
+      final request = http.MultipartRequest('POST', uri);
 
       if (tokenManager != null && tokenManager!.hasToken) {
-        request.headers.set(
-          HttpHeaders.authorizationHeader,
-          'Bearer ${tokenManager!.accessToken}',
-        );
+        request.headers['Authorization'] =
+            'Bearer ${tokenManager!.accessToken}';
       }
 
       headers?.forEach((key, value) {
-        request.headers.set(key, value);
+        request.headers[key] = value;
       });
 
-      final fileName = file.uri.pathSegments.last;
-      
-      request.write('--$boundary\r\n');
-      request.write('Content-Disposition: form-data; name="$fieldName"; filename="$fileName"\r\n');
-      request.write('Content-Type: application/octet-stream\r\n\r\n');
-      
-      await request.addStream(file.openRead());
-      
-      request.write('\r\n--$boundary--\r\n');
+      if (file is List<int>) {
+        request.files.add(http.MultipartFile.fromBytes(
+          fieldName,
+          file,
+          filename: filename ?? 'upload.bin',
+        ));
+      } else if (file is String) {
+        request.files.add(await http.MultipartFile.fromPath(
+          fieldName,
+          file,
+          filename: filename,
+        ));
+      } else if (file is http.MultipartFile) {
+        request.files.add(file);
+      } else {
+        try {
+          final path = (file as dynamic).path as String;
+          request.files.add(await http.MultipartFile.fromPath(
+            fieldName,
+            path,
+            filename: filename,
+          ));
+        } catch (_) {
+          final bytes = await (file as dynamic).readAsBytes() as List<int>;
+          request.files.add(http.MultipartFile.fromBytes(
+            fieldName,
+            bytes,
+            filename: filename ?? 'file',
+          ));
+        }
+      }
 
-      final response = await request.close().timeout(timeout);
-      final responseBody = await response.transform(utf8.decoder).join();
+      final streamedResponse =
+          await _httpClient.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamedResponse);
+      final responseBody =
+          utf8.decode(response.bodyBytes, allowMalformed: true);
 
       return _processResponse(response.statusCode, responseBody);
     } catch (e) {
@@ -257,69 +273,39 @@ class ApiClient {
       );
 
       // -------------------------------------------------------------
-      // Open request
+      // Create HTTP request
       // -------------------------------------------------------------
-      final request = await _httpClient
-          .openUrl(method, uri)
-          .timeout(timeout);
+      final request = http.Request(method, uri);
 
-      // -------------------------------------------------------------
       // Default headers
-      // -------------------------------------------------------------
-      request.headers.set(
-        HttpHeaders.contentTypeHeader,
-        'application/json; charset=utf-8',
-      );
+      request.headers['Content-Type'] = 'application/json; charset=utf-8';
+      request.headers['Accept'] = 'application/json';
 
-      request.headers.set(
-        HttpHeaders.acceptHeader,
-        'application/json',
-      );
-
-      // -------------------------------------------------------------
       // Authorization
-      // -------------------------------------------------------------
-      if (tokenManager != null &&
-          tokenManager!.hasToken) {
-        request.headers.set(
-          HttpHeaders.authorizationHeader,
-          'Bearer ${tokenManager!.accessToken}',
-        );
+      if (tokenManager != null && tokenManager!.hasToken) {
+        request.headers['Authorization'] =
+            'Bearer ${tokenManager!.accessToken}';
       }
 
-      // -------------------------------------------------------------
       // Custom headers
-      // -------------------------------------------------------------
       headers?.forEach((key, value) {
-        request.headers.set(key, value);
+        request.headers[key] = value;
       });
 
-      // -------------------------------------------------------------
       // Request body
-      // -------------------------------------------------------------
       if (body != null) {
-        final jsonString = body is String
-            ? body
-            : jsonEncode(body);
-
-        final bytes = utf8.encode(jsonString);
-        request.headers.contentLength = bytes.length;
-        request.add(bytes);
+        final jsonString = body is String ? body : jsonEncode(body);
+        request.body = jsonString;
       }
 
       // -------------------------------------------------------------
       // Send request
       // -------------------------------------------------------------
-      final response = await request
-          .close()
-          .timeout(timeout);
-
-      // -------------------------------------------------------------
-      // Read response
-      // -------------------------------------------------------------
-      final responseBody = await response
-          .transform(utf8.decoder)
-          .join();
+      final streamedResponse =
+          await _httpClient.send(request).timeout(timeout);
+      final response = await http.Response.fromStream(streamedResponse);
+      final responseBody =
+          utf8.decode(response.bodyBytes, allowMalformed: true);
 
       // -------------------------------------------------------------
       // Handle 401
@@ -362,22 +348,15 @@ class ApiClient {
     // NETWORK ERRORS
     // =============================================================
 
-    on SocketException catch (e) {
-      throw NetworkException(
-        'No Internet connection or server unreachable: '
-        '${e.message}',
-      );
-    }
-
     on TimeoutException {
       throw NetworkException(
         'Request timed out. Please try again.',
       );
     }
 
-    on HttpException catch (e) {
+    on http.ClientException catch (e) {
       throw NetworkException(
-        'HTTP error: ${e.message}',
+        'No Internet connection or server unreachable: ${e.message}',
       );
     }
 
@@ -405,28 +384,18 @@ class ApiClient {
   // ===============================================================
 
   Future<bool> _refreshToken() async {
-    // -------------------------------------------------------------
-    // Another request is already refreshing.
-    // Wait for that same refresh operation.
-    // -------------------------------------------------------------
     if (_refreshCompleter != null) {
       return _refreshCompleter!.future;
     }
 
-    // -------------------------------------------------------------
-    // Create refresh completer
-    // -------------------------------------------------------------
     _refreshCompleter = Completer<bool>();
 
     try {
       final success = await onRefreshToken!();
-
       _refreshCompleter!.complete(success);
-
       return success;
     } catch (_) {
       _refreshCompleter!.complete(false);
-
       return false;
     } finally {
       _refreshCompleter = null;
@@ -446,27 +415,22 @@ class ApiClient {
     if (baseUrl.isEmpty) {
       fullUrl = endpoint;
     } else {
-      final normalizedBaseUrl =
-          baseUrl.replaceFirst(
+      final normalizedBaseUrl = baseUrl.replaceFirst(
         RegExp(r'/$'),
         '',
       );
 
-      final normalizedEndpoint =
-          endpoint.replaceFirst(
+      final normalizedEndpoint = endpoint.replaceFirst(
         RegExp(r'^/'),
         '',
       );
 
-      fullUrl =
-          '$normalizedBaseUrl/$normalizedEndpoint';
+      fullUrl = '$normalizedBaseUrl/$normalizedEndpoint';
     }
 
     final uri = Uri.parse(fullUrl);
 
-    // No query parameters
-    if (queryParams == null ||
-        queryParams.isEmpty) {
+    if (queryParams == null || queryParams.isEmpty) {
       return uri;
     }
 
@@ -503,38 +467,25 @@ class ApiClient {
   ) {
     dynamic decodedData;
 
-    // -------------------------------------------------------------
-    // Decode JSON
-    // -------------------------------------------------------------
     if (responseBody.isNotEmpty) {
       try {
         decodedData = jsonDecode(responseBody);
       } catch (_) {
-        // Server returned plain text
         decodedData = responseBody;
       }
     }
 
-    // -------------------------------------------------------------
-    // Success: 200 - 299
-    // -------------------------------------------------------------
-    if (statusCode >= 200 &&
-        statusCode < 300) {
+    if (statusCode >= 200 && statusCode < 300) {
       return decodedData;
     }
 
-    // -------------------------------------------------------------
-    // Error
-    // -------------------------------------------------------------
     String message = 'HTTP Error $statusCode';
 
     if (decodedData is Map) {
       if (decodedData['message'] != null) {
-        message =
-            decodedData['message'].toString();
+        message = decodedData['message'].toString();
       } else if (decodedData['error'] != null) {
-        message =
-            decodedData['error'].toString();
+        message = decodedData['error'].toString();
       }
     }
 
@@ -550,8 +501,6 @@ class ApiClient {
   // ===============================================================
 
   void dispose() {
-    _httpClient.close(
-      force: true,
-    );
+    _httpClient.close();
   }
 }
